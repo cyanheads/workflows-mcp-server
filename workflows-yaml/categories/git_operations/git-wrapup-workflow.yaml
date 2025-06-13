@@ -39,17 +39,13 @@ steps:
       staged: true
     description: "Review all changes that have already been staged for the next commit."
 
-  - server: "obsidian-mcp-server"
-    tool: "obsidian_update_file"
+  - server: "filesystem-mcp-server"
+    tool: "write_file"
     action: "update_changelog"
     params:
-      targetType: "filePath"
-      targetIdentifier: "{{input.repository_path}}/CHANGELOG.md"
-      modificationType: "wholeFile"
-      wholeFileMode: "prepend"
-      createIfNeeded: true
+      path: "{{input.repository_path}}/CHANGELOG.md"
       content: "{{input.changelog_entry}}"
-    description: "Update the CHANGELOG.md file with a summary of the changes being committed. The new entry should be prepended to the file."
+    description: "Update the CHANGELOG.md file with a summary of the changes being committed. This will overwrite the file, so the changelog entry should contain the full desired content."
 
   - server: "git-mcp-server"
     tool: "git_add"

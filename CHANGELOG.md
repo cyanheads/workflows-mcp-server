@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2025-06-13
+
+### Added
+
+- **New Workflows**: Introduced three new workflows for common operations:
+  - `GitHub Issue to Branch`: Automates the creation of a Git branch from a GitHub issue.
+  - `Comprehensive PubMed Research`: Performs a deep, multi-stage search on PubMed and generates a structured report.
+  - `Website Content Scraper`: Scrapes and archives the main content of a URL.
+- **Example Report**: Added an example output file (`pubmed-research-report-microglia-activation-in-neurodegeneration-2025-06-13.md`) to the `examples/` directory to demonstrate the research workflow's capabilities.
+
+### Changed
+
+- **Git Wrapup Workflow**: Updated the `git-wrapup-workflow.yaml` to use the `filesystem-mcp-server` for updating the `CHANGELOG.md`, replacing the previous `obsidian-mcp-server` dependency. This makes the workflow more generic and portable.
+- **`.gitignore`**: Modified the `.gitignore` file to stop ignoring the `examples/` directory, allowing example outputs to be committed to the repository.
+
 ## [1.0.1] - 2025-06-13
 
 ### Added
