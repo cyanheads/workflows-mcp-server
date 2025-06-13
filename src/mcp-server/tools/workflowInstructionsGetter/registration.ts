@@ -14,7 +14,7 @@ import {
   requestContextService,
 } from '../../../utils/index.js';
 import type { WorkflowInstructionsGetterInput } from './logic.js';
-import { WorkflowInstructionsGetterInputSchema, processWorkflowInstructionsGetter } from './logic.js';
+import { processWorkflowInstructionsGetter, WorkflowInstructionsGetterInputSchema } from './logic.js';
 
 /**
  * Registers the 'workflow_get_instructions' tool with the MCP server.
@@ -27,7 +27,7 @@ export const registerWorkflowInstructionsGetterTool = async (
 ): Promise<void> => {
   const toolName = 'workflow_get_instructions';
   const toolDescription =
-    'Retrieves the complete definition for a single workflow, including the dynamically injected global instructions.';
+    "Retrieves the complete definition for a single workflow by its unique `name`. It provides the workflow's steps, parameters, and metadata to perform the defined automation. The definition is augmented with global instructions to provide the full context required for execution. View workflows as instructions to follow, adjusting to your specific task needs, environment, and relevant data. This tool is to be used in conjunction with your other available tools & resources.";
 
   const registrationContext: RequestContext =
     requestContextService.createRequestContext({

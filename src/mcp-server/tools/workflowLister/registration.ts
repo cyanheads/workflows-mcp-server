@@ -14,7 +14,7 @@ import {
   requestContextService,
 } from '../../../utils/index.js';
 import type { WorkflowListerInput } from './logic.js';
-import { WorkflowListerInputSchema, processWorkflowLister } from './logic.js';
+import { processWorkflowLister, WorkflowListerInputSchema } from './logic.js';
 
 /**
  * Registers the 'workflow_return_list' tool with the MCP server.
@@ -27,7 +27,7 @@ export const registerWorkflowListerTool = async (
 ): Promise<void> => {
   const toolName = 'workflow_return_list';
   const toolDescription =
-    'Retrieves a list of available workflows, providing key metadata for each. Allows for discovery and filtering based on categories and tags.';
+    'Discovers and lists available workflows. It provides a list of workflow metadata (name, description, version, etc.) to identify the correct automation to execute. Includes a filter to narrow the results by `category` or `tags` to find a specific workflow.';
 
   const registrationContext: RequestContext =
     requestContextService.createRequestContext({

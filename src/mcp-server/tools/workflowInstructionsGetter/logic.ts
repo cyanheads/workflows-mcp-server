@@ -29,14 +29,18 @@ export const WorkflowInstructionsGetterInputSchema = z
     name: z
       .string()
       .min(1, 'Workflow name cannot be empty.')
-      .describe('The exact name of the workflow to retrieve.'),
+      .describe(
+        'Required. The exact, case-sensitive name of the workflow to retrieve. This name must match the `name` field in the workflow\'s YAML definition. Example: "Process and Archive New User Images"',
+      ),
     version: z
       .string()
       .optional()
-      .describe('The specific version to retrieve. Defaults to the latest version.'),
+      .describe(
+        'Optional. A specific semantic version (e.g., "1.2.0") to retrieve. This provides a safeguard to ensure you are running the exact version you expect. If omitted, the tool automatically finds and returns the latest available semantic version of the workflow.',
+      ),
   })
   .describe(
-    'Input schema for retrieving a single workflow with injected instructions.',
+    'Defines the input for retrieving a complete, executable workflow definition. This tool fetches a specific workflow by its `name` and optional `version`, then prepends a set of global instructions to it, making it ready for execution.',
   );
 
 export type WorkflowInstructionsGetterInput = z.infer<

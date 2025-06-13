@@ -36,7 +36,7 @@ export interface Workflow {
   steps: WorkflowStep[];
 }
 
-export type WorkflowMetadata = Omit<Workflow, 'steps'> & { filePath: string };
+export type WorkflowMetadata = Workflow & { filePath: string };
 
 // --- Service Implementation ---
 

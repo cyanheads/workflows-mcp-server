@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2025-06-13 12:14:12
+Generated on: 2025-06-13 12:37:33
 
 ```
 workflows-mcp-server

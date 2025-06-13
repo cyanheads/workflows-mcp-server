@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2025-06-13
+
+### Added
+
+- **Tool Discovery in Workflows**: The `workflow_return_list` tool now supports an `includeTools` option, which returns a list of unique tools (`server_name/tool_name`) used within each workflow. This enhances the agent's ability to understand the capabilities of a workflow at a glance.
+
+### Changed
+
+- **Improved Tool Descriptions**: Enhanced the Zod schema descriptions for `workflow_return_list` and `workflow_get_instructions` to be more detailed and provide clearer examples, improving their usability for the agent.
+- **Workflow Metadata Typing**: The `WorkflowMetadata` type in `WorkflowIndexService` now includes the `steps` array, ensuring that the full workflow definition is available during indexing.
+
 ## [1.0.0] - 2025-06-13
 
 ### BREAKING CHANGE
