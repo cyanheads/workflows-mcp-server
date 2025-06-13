@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Standard Git Wrap-up Workflow",
+    "version": "1.0.0",
+    "description": "A comprehensive workflow to guide an agent through the standard process of reviewing, documenting, and committing changes in a Git repository. It includes steps for reviewing diffs, updating a CHANGELOG, and creating a well-formed commit.",
+    "author": "DevOps Team",
+    "created_date": "2025-06-13",
+    "last_updated_date": "2025-06-13",
+    "category": "Git Operations",
+    "tags": [
+      "git",
+      "commit",
+      "workflow",
+      "documentation"
+    ],
+    "steps": [
+      {
+        "server": "git-mcp-server",
+        "tool": "git_set_working_dir",
+        "action": "set_directory",
+        "params": {
+          "path": "{{input.repository_path}}",
+          "validateGitRepo": true
+        },
+        "description": "Set the session's working directory to the target Git repository."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_status",
+        "action": "get_status",
+        "params": {},
+        "description": "Check the initial status of the repository to identify any untracked or modified files."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_diff",
+        "action": "review_unstaged_changes",
+        "params": {
+          "includeUntracked": true
+        },
+        "description": "Review all unstaged changes and the content of any untracked files to prepare for the commit."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_diff",
+        "action": "review_staged_changes",
+        "params": {
+          "staged": true
+        },
+        "description": "Review all changes that have already been staged for the next commit."
+      },
+      {
+        "server": "obsidian-mcp-server",
+        "tool": "obsidian_update_file",
+        "action": "update_changelog",
+        "params": {
+          "targetType": "filePath",
+          "targetIdentifier": "{{input.repository_path}}/CHANGELOG.md",
+          "modificationType": "wholeFile",
+          "wholeFileMode": "prepend",
+          "createIfNeeded": true,
+          "content": "{{input.changelog_entry}}"
+        },
+        "description": "Update the CHANGELOG.md file with a summary of the changes being committed. The new entry should be prepended to the file."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_add",
+        "action": "stage_changes",
+        "params": {
+          "files": [
+            "CHANGELOG.md",
+            "."
+          ]
+        },
+        "description": "Stage the updated CHANGELOG.md and any other remaining modified files for the commit."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_commit",
+        "action": "create_commit",
+        "params": {
+          "message": "{{input.commit_message}}"
+        },
+        "description": "Commit the staged changes with a clear and descriptive message following Conventional Commits format."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_status",
+        "action": "get_final_status",
+        "params": {},
+        "description": "Run a final status check to ensure the working directory is clean after the commit."
+      }
+    ],
+    "filePath": "categories/git_operations/git-wrapup-workflow.yaml"
+  }
+]

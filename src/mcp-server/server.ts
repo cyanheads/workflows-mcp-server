@@ -17,10 +17,10 @@
 import { ServerType } from "@hono/node-server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { config, environment } from "../config/index.js";
+import { workflowIndexService } from "../services/workflow-indexer/index.js";
 import { ErrorHandler, logger, requestContextService } from "../utils/index.js";
-import { registerEchoResource } from "./resources/echoResource/index.js";
-import { registerCatFactFetcherTool } from "./tools/catFactFetcher/index.js";
-import { registerEchoTool } from "./tools/echoTool/index.js";
+import { registerWorkflowInstructionsGetterTool } from "./tools/workflowInstructionsGetter/index.js";
+import { registerWorkflowListerTool } from "./tools/workflowLister/index.js";
 import { startHttpTransport } from "./transports/httpTransport.js";
 import { connectStdioTransport } from "./transports/stdioTransport.js";
 
@@ -78,9 +78,8 @@ async function createMcpServerInstance(): Promise<McpServer> {
 
   try {
     logger.debug("Registering resources and tools...", context);
-    await registerEchoResource(server);
-    await registerEchoTool(server);
-    await registerCatFactFetcherTool(server);
+    await registerWorkflowListerTool(server);
+    await registerWorkflowInstructionsGetterTool(server);
     logger.info("Resources and tools registered successfully", context);
   } catch (err) {
     logger.error("Failed to register resources/tools", {
@@ -164,6 +163,7 @@ export async function initializeAndStartServer(): Promise<
   });
   logger.info("MCP Server initialization sequence started.", context);
   try {
+    await workflowIndexService.initialize(context);
     const result = await startTransport();
     logger.info(
       "MCP Server initialization sequence completed successfully.",

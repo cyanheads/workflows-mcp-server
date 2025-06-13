@@ -16,25 +16,28 @@
  * @module src/mcp-server/transports/authentication/authMiddleware
  */
 
-import { HttpBindings } from "@hono/node-server";
-import { Context, Next } from "hono";
-import jwt from "jsonwebtoken";
-import { config, environment } from "../../../config/index.js";
-import { logger, requestContextService } from "../../../utils/index.js";
-import { authContext } from "./authContext.js";
-import type { AuthInfo } from "./types.js";
+import { HttpBindings } from '@hono/node-server';
+import { Context, Next } from 'hono';
+import { jwtVerify, errors as joseErrors } from 'jose';
+import { config, environment } from '../../../config/index.js';
+import { logger, requestContextService } from '../../../utils/index.js';
+import { authContext } from './authContext.js';
 
-// Startup Validation: Validate secret key presence on module load.
-if (environment === "production" && !config.mcpAuthSecretKey) {
+// --- Startup Validation & Key Preparation ---
+let secretKey: Uint8Array | undefined;
+
+if (environment === 'production' && !config.mcpAuthSecretKey) {
   logger.fatal(
-    "CRITICAL: MCP_AUTH_SECRET_KEY is not set in production environment. Authentication cannot proceed securely.",
+    'CRITICAL: MCP_AUTH_SECRET_KEY is not set in production environment. Authentication cannot proceed securely.',
   );
   throw new Error(
-    "MCP_AUTH_SECRET_KEY must be set in production environment for JWT authentication.",
+    'MCP_AUTH_SECRET_KEY must be set in production environment for JWT authentication.',
   );
-} else if (!config.mcpAuthSecretKey) {
+} else if (config.mcpAuthSecretKey) {
+  secretKey = new TextEncoder().encode(config.mcpAuthSecretKey);
+} else {
   logger.warning(
-    "MCP_AUTH_SECRET_KEY is not set. Authentication middleware will bypass checks (DEVELOPMENT ONLY). This is insecure for production.",
+    'MCP_AUTH_SECRET_KEY is not set. Authentication middleware will bypass checks (DEVELOPMENT ONLY). This is insecure for production.',
   );
 }
 
@@ -47,89 +50,71 @@ export async function mcpAuthMiddleware(
   next: Next,
 ) {
   const context = requestContextService.createRequestContext({
-    operation: "mcpAuthMiddleware",
+    operation: 'mcpAuthMiddleware',
     method: c.req.method,
     path: c.req.path,
   });
   logger.debug(
-    "Running MCP Authentication Middleware (Bearer Token Validation)...",
+    'Running MCP Authentication Middleware (Bearer Token Validation)...',
     context,
   );
 
   const reqWithAuth = c.env.incoming;
 
   // Development Mode Bypass
-  if (!config.mcpAuthSecretKey) {
-    if (environment !== "production") {
+  if (!secretKey) {
+    if (environment !== 'production') {
       logger.warning(
-        "Bypassing JWT authentication: MCP_AUTH_SECRET_KEY is not set (DEVELOPMENT ONLY).",
+        'Bypassing JWT authentication: MCP_AUTH_SECRET_KEY is not set (DEVELOPMENT ONLY).',
         context,
       );
       reqWithAuth.auth = {
-        token: "dev-mode-placeholder-token",
-        clientId: "dev-client-id",
-        scopes: ["dev-scope"],
+        token: 'dev-mode-placeholder-token',
+        clientId: 'dev-client-id',
+        scopes: ['dev-scope'],
       };
       const authInfo = reqWithAuth.auth;
-      logger.debug("Dev mode auth object created.", {
+      logger.debug('Dev mode auth object created.', {
         ...context,
         authDetails: authInfo,
       });
       return await authContext.run({ authInfo }, next);
     } else {
+      // This case is already handled by the startup validation, but serves as a runtime safeguard.
       logger.error(
-        "FATAL: MCP_AUTH_SECRET_KEY is missing in production. Cannot bypass auth.",
+        'FATAL: MCP_AUTH_SECRET_KEY is missing in production. Cannot bypass auth.',
         context,
       );
       return c.json(
-        { error: "Server configuration error: Authentication key missing." },
+        { error: 'Server configuration error: Authentication key missing.' },
         500,
       );
     }
   }
 
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     logger.warning(
-      "Authentication failed: Missing or malformed Authorization header (Bearer scheme required).",
+      'Authentication failed: Missing or malformed Authorization header (Bearer scheme required).',
       context,
     );
     return c.json(
       {
-        error: "Unauthorized: Missing or invalid authentication token format.",
+        error: 'Unauthorized: Missing or invalid authentication token format.',
       },
       401,
     );
   }
 
-  const tokenParts = authHeader.split(" ");
-  if (tokenParts.length !== 2 || tokenParts[0] !== "Bearer" || !tokenParts[1]) {
-    logger.warning("Authentication failed: Malformed Bearer token.", context);
-    return c.json(
-      { error: "Unauthorized: Malformed authentication token." },
-      401,
-    );
-  }
-  const rawToken = tokenParts[1];
+  const rawToken = authHeader.substring(7);
 
   try {
-    const decoded = jwt.verify(rawToken, config.mcpAuthSecretKey);
-
-    if (typeof decoded === "string") {
-      logger.warning(
-        "Authentication failed: JWT decoded to a string, expected an object payload.",
-        context,
-      );
-      return c.json(
-        { error: "Unauthorized: Invalid token payload format." },
-        401,
-      );
-    }
+    const { payload: decoded } = await jwtVerify(rawToken, secretKey);
 
     const clientIdFromToken =
-      typeof decoded.cid === "string"
+      typeof decoded.cid === 'string'
         ? decoded.cid
-        : typeof decoded.client_id === "string"
+        : typeof decoded.client_id === 'string'
           ? decoded.client_id
           : undefined;
     if (!clientIdFromToken) {
@@ -138,7 +123,7 @@ export async function mcpAuthMiddleware(
         { ...context, jwtPayloadKeys: Object.keys(decoded) },
       );
       return c.json(
-        { error: "Unauthorized: Invalid token, missing client identifier." },
+        { error: 'Unauthorized: Invalid token, missing client identifier.' },
         401,
       );
     }
@@ -146,26 +131,23 @@ export async function mcpAuthMiddleware(
     let scopesFromToken: string[] = [];
     if (
       Array.isArray(decoded.scp) &&
-      decoded.scp.every((s) => typeof s === "string")
+      decoded.scp.every(s => typeof s === 'string')
     ) {
       scopesFromToken = decoded.scp as string[];
     } else if (
-      typeof decoded.scope === "string" &&
-      decoded.scope.trim() !== ""
+      typeof decoded.scope === 'string' &&
+      decoded.scope.trim() !== ''
     ) {
-      scopesFromToken = decoded.scope.split(" ").filter((s) => s);
-      if (scopesFromToken.length === 0 && decoded.scope.trim() !== "") {
-        scopesFromToken = [decoded.scope.trim()];
-      }
+      scopesFromToken = decoded.scope.split(' ').filter(s => s);
     }
 
     if (scopesFromToken.length === 0) {
       logger.warning(
-        "Authentication failed: Token resulted in an empty scope array, and scopes are required.",
+        'Authentication failed: Token resulted in an empty scope array, and scopes are required.',
         { ...context, jwtPayloadKeys: Object.keys(decoded) },
       );
       return c.json(
-        { error: "Unauthorized: Token must contain valid, non-empty scopes." },
+        { error: 'Unauthorized: Token must contain valid, non-empty scopes.' },
         401,
       );
     }
@@ -177,9 +159,9 @@ export async function mcpAuthMiddleware(
     };
 
     const subClaimForLogging =
-      typeof decoded.sub === "string" ? decoded.sub : undefined;
+      typeof decoded.sub === 'string' ? decoded.sub : undefined;
     const authInfo = reqWithAuth.auth;
-    logger.debug("JWT verified successfully. AuthInfo attached to request.", {
+    logger.debug('JWT verified successfully. AuthInfo attached to request.', {
       ...context,
       mcpSessionIdContext: subClaimForLogging,
       clientId: authInfo.clientId,
@@ -187,26 +169,29 @@ export async function mcpAuthMiddleware(
     });
     await authContext.run({ authInfo }, next);
   } catch (error: unknown) {
-    let errorMessage = "Invalid token";
-    if (error instanceof jwt.TokenExpiredError) {
-      errorMessage = "Token expired";
-      logger.warning("Authentication failed: Token expired.", {
+    let errorMessage = 'Invalid token';
+    if (error instanceof joseErrors.JWTExpired) {
+      errorMessage = `Token expired at ${error.payload.exp}`;
+      logger.warning(`Authentication failed: ${errorMessage}`, {
         ...context,
-        expiredAt: error.expiredAt,
+        expiredAt: error.payload.exp,
       });
-    } else if (error instanceof jwt.JsonWebTokenError) {
-      errorMessage = `Invalid token: ${error.message}`;
+    } else if (error instanceof joseErrors.JWSInvalid) {
+      errorMessage = `Invalid token signature: ${error.code}`;
       logger.warning(`Authentication failed: ${errorMessage}`, { ...context });
+    } else if (error instanceof joseErrors.JWTClaimValidationFailed) {
+        errorMessage = `Token claim validation failed: ${error.message}`;
+        logger.warning(`Authentication failed: ${errorMessage}`, { ...context, claim: error.claim, reason: error.reason });
     } else if (error instanceof Error) {
       errorMessage = `Verification error: ${error.message}`;
       logger.error(
-        "Authentication failed: Unexpected error during token verification.",
+        'Authentication failed: Unexpected error during token verification.',
         { ...context, error: error.message },
       );
     } else {
-      errorMessage = "Unknown verification error";
+      errorMessage = 'Unknown verification error';
       logger.error(
-        "Authentication failed: Unexpected non-error exception during token verification.",
+        'Authentication failed: Unexpected non-error exception during token verification.',
         { ...context, error },
       );
     }

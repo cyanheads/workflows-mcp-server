@@ -1,18 +1,14 @@
-# mcp-ts-template - Directory Structure
+# workflows-mcp-server - Directory Structure
 
-Generated on: 2025-06-12 04:53:16
+Generated on: 2025-06-13 12:14:12
 
 ```
-mcp-ts-template
+workflows-mcp-server
 ├── .github
 │   ├── workflows
 │   │   └── publish.yml
 │   └── FUNDING.yml
 ├── docs
-│   ├── api-references
-│   │   ├── duckDB.md
-│   │   ├── jsdoc-standard-tags.md
-│   │   └── typedoc-reference.md
 │   └── tree.md
 ├── scripts
 │   ├── clean.ts
@@ -23,37 +19,13 @@ mcp-ts-template
 ├── src
 │   ├── config
 │   │   └── index.ts
-│   ├── mcp-client
-│   │   ├── client-config
-│   │   │   ├── configLoader.ts
-│   │   │   ├── mcp-config.json.example
-│   │   │   └── README.md
-│   │   ├── core
-│   │   │   ├── clientCache.ts
-│   │   │   ├── clientConnectionLogic.ts
-│   │   │   └── clientManager.ts
-│   │   ├── transports
-│   │   │   ├── httpClientTransport.ts
-│   │   │   ├── index.ts
-│   │   │   ├── stdioClientTransport.ts
-│   │   │   └── transportFactory.ts
-│   │   └── index.ts
 │   ├── mcp-server
-│   │   ├── resources
-│   │   │   └── echoResource
-│   │   │       ├── echoResourceLogic.ts
-│   │   │       ├── index.ts
-│   │   │       └── registration.ts
 │   │   ├── tools
-│   │   │   ├── catFactFetcher
+│   │   │   ├── workflowInstructionsGetter
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   ├── echoTool
-│   │   │   │   ├── index.ts
-│   │   │   │   ├── logic.ts
-│   │   │   │   └── registration.ts
-│   │   │   └── imageTest
+│   │   │   └── workflowLister
 │   │   │       ├── index.ts
 │   │   │       ├── logic.ts
 │   │   │       └── registration.ts
@@ -69,17 +41,9 @@ mcp-ts-template
 │   │   ├── README.md
 │   │   └── server.ts
 │   ├── services
-│   │   ├── duck-db
-│   │   │   ├── duckDBConnectionManager.ts
-│   │   │   ├── duckDBQueryExecutor.ts
-│   │   │   ├── duckDBService.ts
-│   │   │   └── types.ts
-│   │   ├── llm-providers
-│   │   │   └── openRouterProvider.ts
-│   │   └── supabase
-│   │       └── supabaseClient.ts
-│   ├── storage
-│   │   └── duckdbExample.ts
+│   │   └── workflow-indexer
+│   │       ├── index.ts
+│   │       └── WorkflowIndexService.ts
 │   ├── types-global
 │   │   └── errors.ts
 │   ├── utils
@@ -105,6 +69,12 @@ mcp-ts-template
 │   │   │   └── sanitization.ts
 │   │   └── index.ts
 │   └── index.ts
+├── workflows-yaml
+│   ├── categories
+│   │   └── git_operations
+│   │       └── git-wrapup-workflow.yaml
+│   ├── _index.json
+│   └── global_instructions.md
 ├── .clinerules
 ├── .dockerignore
 ├── .env.example

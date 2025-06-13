@@ -177,7 +177,20 @@ const EnvSchema = z.object({
   SUPABASE_ANON_KEY: z.string().optional(),
   /** Supabase Service Role Key (secret). From `SUPABASE_SERVICE_ROLE_KEY`. */
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-});
+}).refine(
+  (env) => {
+    // If auth mode is 'jwt' and environment is 'production', the secret key is required.
+    if (env.NODE_ENV === 'production' && env.MCP_AUTH_MODE === 'jwt') {
+      return typeof env.MCP_AUTH_SECRET_KEY === 'string' && env.MCP_AUTH_SECRET_KEY.length >= 32;
+    }
+    // For other modes or environments, this check doesn't apply.
+    return true;
+  },
+  {
+    message: "MCP_AUTH_SECRET_KEY (min 32 chars) is required when NODE_ENV is 'production' and MCP_AUTH_MODE is 'jwt'.",
+    path: ['MCP_AUTH_SECRET_KEY'], // Specify the path of the error
+  }
+);
 
 const parsedEnv = EnvSchema.safeParse(process.env);
 

@@ -27,6 +27,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import http from "http"; // Import http module
 import { config, environment } from "./config/index.js";
 import { initializeAndStartServer } from "./mcp-server/server.js";
+import { workflowIndexService } from "./services/workflow-indexer/index.js";
 import { requestContextService } from "./utils/index.js";
 import { logger, McpLogLevel } from "./utils/internal/logger.js";
 
@@ -60,6 +61,10 @@ const shutdown = async (signal: string): Promise<void> => {
     `Received ${signal}. Initiating graceful shutdown...`,
     shutdownContext,
   );
+
+  // Stop the workflow watcher first
+  await workflowIndexService.stopWatcher();
+  logger.info("Workflow watcher stopped.", shutdownContext);
 
   let mcpClosed = false;
   let httpClosed = false;
