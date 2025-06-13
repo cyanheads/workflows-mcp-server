@@ -1,0 +1,174 @@
+# Workflow: Comprehensive PubMed Research and Report Generation
+# This workflow orchestrates a deep and recursive literature search on PubMed,
+# synthesizes the findings, and compiles a structured, polished research report.
+# It is designed to be dynamic, allowing the executing agent to adapt parameters
+# based on the context of the research task.
+
+name: "Comprehensive PubMed Research and Report Generation"
+version: "1.0.2"
+description: "Performs a multi-stage, recursive-style PubMed search to build a comprehensive research report. It identifies top-tier articles, conducts a 'deep dive' to find related works, sets a filesystem context, and generates a polished, structured markdown report. This workflow is ideal for initial discovery and literature review phases."
+author: "Advanced Research Division"
+created_date: "2025-06-13"
+last_updated_date: "2025-06-13"
+category: "Research Operations"
+tags:
+  - "pubmed"
+  - "research"
+  - "deep-dive"
+  - "reporting"
+  - "literature-review"
+
+# ====================================================================================
+# WORKFLOW STEPS
+# The agent should execute these steps sequentially, using the output of each step
+# as input for the next. The agent can dynamically adjust parameters as needed.
+# ====================================================================================
+steps:
+  # ------------------------------------------------------------------------------------
+  # STEP 1: Initial Broad Search
+  # Goal: Identify a set of highly relevant seed articles from a broad query.
+  # ------------------------------------------------------------------------------------
+  - name: "initial_search"
+    server: "pubmed-mcp-server"
+    tool: "search_pubmed_articles"
+    description: "Executes a broad search on PubMed to gather an initial set of relevant articles. The `queryTerm` should be crafted to capture the core concepts of the research topic. This step provides the foundational PMIDs for the deep dive."
+    params:
+      # Example: "TREM2 signaling in Alzheimer's disease"
+      queryTerm: "{{input.query_term}}"
+      # Agent Note: Adjust maxResults based on the desired breadth of the initial search. 10-20 is a good starting point.
+      maxResults: 15
+      # Fetches brief summaries to aid in selecting articles for the deep dive.
+      fetchBriefSummaries: 15
+
+  # ------------------------------------------------------------------------------------
+  # STEP 2: Fetch Details for Top Articles
+  # Goal: Retrieve detailed information for the most relevant articles found.
+  # ------------------------------------------------------------------------------------
+  - name: "fetch_top_articles_details"
+    server: "pubmed-mcp-server"
+    tool: "fetch_pubmed_content"
+    description: "Fetches comprehensive details (title, abstract, authors, journal, DOI) for the articles identified in the initial search. This content forms the core of the final report."
+    params:
+      # Dynamically uses the list of PubMed IDs from the 'initial_search' step.
+      pmids: "{{steps.initial_search.output.pmids}}"
+      # 'abstract_plus' provides a well-parsed object with all key information.
+      detailLevel: "abstract_plus"
+
+  # ------------------------------------------------------------------------------------
+  # STEP 3: Deep Dive - Find Connections
+  # Goal: For the most relevant articles, find other papers that are closely related.
+  # This simulates a recursive search, expanding the knowledge base.
+  # ------------------------------------------------------------------------------------
+  - name: "find_related_articles"
+    server: "pubmed-mcp-server"
+    tool: "get_pubmed_article_connections"
+    description: "Performs a 'deep dive' by finding articles similar to the top results from the initial search. This step is crucial for uncovering related research and adding depth to the report. It iterates over the top 3 articles."
+    # Agent Note: This uses a 'forEach' construct which the workflow runner should handle.
+    # It will execute the tool call for each of the top 3 articles from the previous step.
+    forEach: "{{steps.fetch_top_articles_details.output.results | slice: 0, 3}}"
+    params:
+      # 'item.pmid' refers to the pmid of the article in the current iteration.
+      sourcePmid: "{{item.pmid}}"
+      # Finds articles computationally determined to be similar by PubMed's algorithms.
+      relationshipType: "pubmed_similar_articles"
+      # Limits the number of related articles to keep the report focused. Adjust as needed.
+      maxRelatedResults: 5
+
+  # ------------------------------------------------------------------------------------
+  # STEP 4: Fetch Details for Related Articles
+  # Goal: Retrieve details for the newly discovered related articles.
+  # ------------------------------------------------------------------------------------
+  - name: "fetch_related_articles_details"
+    server: "pubmed-mcp-server"
+    tool: "fetch_pubmed_content"
+    description: "Fetches details for the similar articles discovered in the 'deep dive' step. This populates the report with a second layer of relevant literature."
+    # Flattens the list of PMIDs from the multiple calls in the previous step.
+    forEach: "{{steps.find_related_articles.output}}"
+    params:
+      # The PMIDs are nested inside the 'linkset' array from the get_pubmed_article_connections tool.
+      pmids: "{{item.linkset[0].links}}"
+      detailLevel: "abstract_plus"
+
+  # ------------------------------------------------------------------------------------
+  # STEP 5: Configure Filesystem Context
+  # Goal: Establish a reliable root directory for file operations.
+  # ------------------------------------------------------------------------------------
+  - name: "configure_filesystem_context"
+    server: "filesystem-mcp-server"
+    tool: "set_filesystem_default"
+    description: "Sets the absolute root path for all subsequent filesystem operations. This ensures that relative paths, like the report output path, are resolved correctly and consistently, making the workflow self-contained and removing reliance on session state."
+    params:
+      # Agent Note: This path MUST be the absolute path to the project's root directory.
+      # This should be dynamically provided by you.
+      # Example: "/path/to/your/project"
+      path: "{{input.project_root_path}}"
+
+  # ------------------------------------------------------------------------------------
+  # STEP 6: Compile Comprehensive Report
+  # Goal: Synthesize all gathered information into a single, well-structured file.
+  # ------------------------------------------------------------------------------------
+  - name: "compile_report"
+    server: "filesystem-mcp-server"
+    tool: "write_file"
+    description: "Generates the final, polished markdown report. It intelligently structures the data from all previous steps into a readable and professional document, including a summary, top articles, and the deep dive results."
+    params:
+      # Creates a unique, descriptive filename for the report.
+      path: "reports/pubmed-research-report-{{input.query_term | slugify}}-{{now | date: 'YYYY-MM-DD'}}.md"
+      # The content is a detailed markdown template.
+      content: |
+        # Comprehensive PubMed Research Report
+
+        **Generated:** {{now | date: "MMMM Do, YYYY HH:mm Z"}}
+        **Primary Query:** `{{input.query_term}}`
+
+        ## Executive Summary
+
+        This report summarizes an automated, in-depth literature search conducted on the PubMed database. It includes an initial set of top-ranking articles related to the primary query, followed by a 'deep dive' into closely related publications. The goal is to provide a foundational understanding of the current research landscape for the specified topic.
+
+        ---
+
+        ## 1. Top-Ranked Articles
+
+        The following articles were identified as most relevant in the initial search.
+
+        {{#each steps.fetch_top_articles_details.output.results}}
+        ### 1.{{@index + 1}} {{this.title}}
+
+        - **Authors:** {{#each this.authors}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}
+        - **Journal:** {{this.journalInfo.journal.title}} ({{this.journalInfo.publicationYear}})
+        - **PMID:** `{{this.pmid}}`
+        - **DOI:** [{{this.doi}}](https://doi.org/{{this.doi}})
+
+        **Abstract:**
+        > {{this.abstract | replace: '\n', '\n> '}}
+
+        ---
+        {{/each}}
+
+        ## 2. Deep Dive: Related Publications
+
+        For each of the top 3 articles, a search for similar publications was conducted.
+
+        {{#each steps.find_related_articles.output}}
+        ### 2.{{@index + 1}} Publications Related to "{{this.sourceArticleTitle}}" (PMID: {{this.sourcePmid}})
+
+        {{#if (lookup ../steps.fetch_related_articles_details.output @index)}}
+          {{#each (lookup ../steps.fetch_related_articles_details.output @index).results}}
+        #### 2.{{../@index + 1}}.{{@index + 1}} {{this.title}}
+
+        - **Authors:** {{#each this.authors}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}
+        - **Journal:** {{this.journalInfo.journal.title}} ({{this.journalInfo.publicationYear}})
+        - **PMID:** `{{this.pmid}}`
+        - **DOI:** [{{this.doi}}](https://doi.org/{{this.doi}})
+
+        **Abstract:**
+        > {{this.abstract | replace: '\n', '\n> '}}
+
+          {{/each}}
+        {{else}}
+        *No related articles found or an error occurred while fetching details.*
+        {{/if}}
+        ---
+        {{/each}}
+
+        ## End of Report

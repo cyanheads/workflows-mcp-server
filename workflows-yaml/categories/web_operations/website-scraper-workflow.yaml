@@ -1,0 +1,29 @@
+name: "Website Content Scraper and Archiver"
+version: "1.0.0"
+description: "Scrapes the main content of a given URL and saves it as a markdown file for archival or analysis."
+author: "Content Team"
+created_date: "2025-06-13"
+last_updated_date: "2025-06-13"
+category: "Web Operations"
+tags:
+  - "web"
+  - "scrape"
+  - "archive"
+  - "firecrawl"
+steps:
+  - server: "firecrawl-mcp-server"
+    tool: "firecrawl_scrape"
+    action: "scrape_website"
+    params:
+      url: "{{input.url}}"
+      formats: ["markdown"]
+      onlyMainContent: true
+    description: "Scrape the main content of the specified URL in markdown format."
+
+  - server: "filesystem-mcp-server"
+    tool: "write_file"
+    action: "save_scraped_content"
+    params:
+      path: "scraped_content_{{input.url | slugify}}.md"
+      content: "{{steps.scrape_website.output.markdown}}"
+    description: "Save the scraped markdown content to a local file."

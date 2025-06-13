@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2025-06-13 12:37:33
+Generated on: 2025-06-13 13:10:07
 
 ```
 workflows-mcp-server
@@ -10,6 +10,8 @@ workflows-mcp-server
 │   └── FUNDING.yml
 ├── docs
 │   └── tree.md
+├── examples
+│   └── pubmed-research-report-microglia-activation-in-neurodegeneration-2025-06-13.md
 ├── scripts
 │   ├── clean.ts
 │   ├── fetch-openapi-spec.ts
@@ -71,8 +73,14 @@ workflows-mcp-server
 │   └── index.ts
 ├── workflows-yaml
 │   ├── categories
-│   │   └── git_operations
-│   │       └── git-wrapup-workflow.yaml
+│   │   ├── git_operations
+│   │   │   └── git-wrapup-workflow.yaml
+│   │   ├── github_operations
+│   │   │   └── github-issue-to-branch-workflow.yaml
+│   │   ├── research_operations
+│   │   │   └── pubmed-research-workflow.yaml
+│   │   └── web_operations
+│   │       └── website-scraper-workflow.yaml
 │   ├── _index.json
 │   └── global_instructions.md
 ├── .clinerules

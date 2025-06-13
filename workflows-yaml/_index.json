@@ -50,18 +50,14 @@
         "description": "Review all changes that have already been staged for the next commit."
       },
       {
-        "server": "obsidian-mcp-server",
-        "tool": "obsidian_update_file",
+        "server": "filesystem-mcp-server",
+        "tool": "write_file",
         "action": "update_changelog",
         "params": {
-          "targetType": "filePath",
-          "targetIdentifier": "{{input.repository_path}}/CHANGELOG.md",
-          "modificationType": "wholeFile",
-          "wholeFileMode": "prepend",
-          "createIfNeeded": true,
+          "path": "{{input.repository_path}}/CHANGELOG.md",
           "content": "{{input.changelog_entry}}"
         },
-        "description": "Update the CHANGELOG.md file with a summary of the changes being committed. The new entry should be prepended to the file."
+        "description": "Update the CHANGELOG.md file with a summary of the changes being committed. This will overwrite the file, so the changelog entry should contain the full desired content."
       },
       {
         "server": "git-mcp-server",
@@ -93,5 +89,187 @@
       }
     ],
     "filePath": "categories/git_operations/git-wrapup-workflow.yaml"
+  },
+  {
+    "name": "GitHub Issue to Branch Workflow",
+    "version": "1.0.0",
+    "description": "Creates a new Git branch from a GitHub issue. It fetches the issue title to generate a descriptive branch name, and then checks out the new branch.",
+    "author": "DevOps Team",
+    "created_date": "2025-06-13",
+    "last_updated_date": "2025-06-13",
+    "category": "GitHub Operations",
+    "tags": [
+      "git",
+      "github",
+      "branch",
+      "issue"
+    ],
+    "steps": [
+      {
+        "server": "git-mcp-server",
+        "tool": "git_set_working_dir",
+        "action": "set_directory",
+        "params": {
+          "path": "{{input.repository_path}}",
+          "validateGitRepo": true
+        },
+        "description": "Set the session's working directory to the target Git repository."
+      },
+      {
+        "server": "github-mcp-server",
+        "tool": "get_issue",
+        "action": "get_issue_details",
+        "params": {
+          "owner": "{{input.owner}}",
+          "repo": "{{input.repo}}",
+          "issue_number": "{{input.issue_number}}"
+        },
+        "description": "Fetch the details of the specified GitHub issue."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_branch",
+        "action": "create_branch_from_issue",
+        "params": {
+          "mode": "create",
+          "branchName": "feature/issue-{{steps.get_issue_details.output.number}}-{{steps.get_issue_details.output.title | slugify}}",
+          "startPoint": "main"
+        },
+        "description": "Create a new branch with a name derived from the issue number and title."
+      },
+      {
+        "server": "git-mcp-server",
+        "tool": "git_checkout",
+        "action": "checkout_new_branch",
+        "params": {
+          "branchOrPath": "feature/issue-{{steps.get_issue_details.output.number}}-{{steps.get_issue_details.output.title | slugify}}"
+        },
+        "description": "Switch to the newly created branch."
+      }
+    ],
+    "filePath": "categories/github_operations/github-issue-to-branch-workflow.yaml"
+  },
+  {
+    "name": "Comprehensive PubMed Research and Report Generation",
+    "version": "1.0.2",
+    "description": "Performs a multi-stage, recursive-style PubMed search to build a comprehensive research report. It identifies top-tier articles, conducts a 'deep dive' to find related works, sets a filesystem context, and generates a polished, structured markdown report. This workflow is ideal for initial discovery and literature review phases.",
+    "author": "Advanced Research Division",
+    "created_date": "2025-06-13",
+    "last_updated_date": "2025-06-13",
+    "category": "Research Operations",
+    "tags": [
+      "pubmed",
+      "research",
+      "deep-dive",
+      "reporting",
+      "literature-review"
+    ],
+    "steps": [
+      {
+        "name": "initial_search",
+        "server": "pubmed-mcp-server",
+        "tool": "search_pubmed_articles",
+        "description": "Executes a broad search on PubMed to gather an initial set of relevant articles. The `queryTerm` should be crafted to capture the core concepts of the research topic. This step provides the foundational PMIDs for the deep dive.",
+        "params": {
+          "queryTerm": "{{input.query_term}}",
+          "maxResults": 15,
+          "fetchBriefSummaries": 15
+        }
+      },
+      {
+        "name": "fetch_top_articles_details",
+        "server": "pubmed-mcp-server",
+        "tool": "fetch_pubmed_content",
+        "description": "Fetches comprehensive details (title, abstract, authors, journal, DOI) for the articles identified in the initial search. This content forms the core of the final report.",
+        "params": {
+          "pmids": "{{steps.initial_search.output.pmids}}",
+          "detailLevel": "abstract_plus"
+        }
+      },
+      {
+        "name": "find_related_articles",
+        "server": "pubmed-mcp-server",
+        "tool": "get_pubmed_article_connections",
+        "description": "Performs a 'deep dive' by finding articles similar to the top results from the initial search. This step is crucial for uncovering related research and adding depth to the report. It iterates over the top 3 articles.",
+        "forEach": "{{steps.fetch_top_articles_details.output.results | slice: 0, 3}}",
+        "params": {
+          "sourcePmid": "{{item.pmid}}",
+          "relationshipType": "pubmed_similar_articles",
+          "maxRelatedResults": 5
+        }
+      },
+      {
+        "name": "fetch_related_articles_details",
+        "server": "pubmed-mcp-server",
+        "tool": "fetch_pubmed_content",
+        "description": "Fetches details for the similar articles discovered in the 'deep dive' step. This populates the report with a second layer of relevant literature.",
+        "forEach": "{{steps.find_related_articles.output}}",
+        "params": {
+          "pmids": "{{item.linkset[0].links}}",
+          "detailLevel": "abstract_plus"
+        }
+      },
+      {
+        "name": "configure_filesystem_context",
+        "server": "filesystem-mcp-server",
+        "tool": "set_filesystem_default",
+        "description": "Sets the absolute root path for all subsequent filesystem operations. This ensures that relative paths, like the report output path, are resolved correctly and consistently, making the workflow self-contained and removing reliance on session state.",
+        "params": {
+          "path": "{{input.project_root_path}}"
+        }
+      },
+      {
+        "name": "compile_report",
+        "server": "filesystem-mcp-server",
+        "tool": "write_file",
+        "description": "Generates the final, polished markdown report. It intelligently structures the data from all previous steps into a readable and professional document, including a summary, top articles, and the deep dive results.",
+        "params": {
+          "path": "reports/pubmed-research-report-{{input.query_term | slugify}}-{{now | date: 'YYYY-MM-DD'}}.md",
+          "content": "# Comprehensive PubMed Research Report\n\n**Generated:** {{now | date: \"MMMM Do, YYYY HH:mm Z\"}}\n**Primary Query:** `{{input.query_term}}`\n\n## Executive Summary\n\nThis report summarizes an automated, in-depth literature search conducted on the PubMed database. It includes an initial set of top-ranking articles related to the primary query, followed by a 'deep dive' into closely related publications. The goal is to provide a foundational understanding of the current research landscape for the specified topic.\n\n---\n\n## 1. Top-Ranked Articles\n\nThe following articles were identified as most relevant in the initial search.\n\n{{#each steps.fetch_top_articles_details.output.results}}\n### 1.{{@index + 1}} {{this.title}}\n\n- **Authors:** {{#each this.authors}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}\n- **Journal:** {{this.journalInfo.journal.title}} ({{this.journalInfo.publicationYear}})\n- **PMID:** `{{this.pmid}}`\n- **DOI:** [{{this.doi}}](https://doi.org/{{this.doi}})\n\n**Abstract:**\n> {{this.abstract | replace: '\\n', '\\n> '}}\n\n---\n{{/each}}\n\n## 2. Deep Dive: Related Publications\n\nFor each of the top 3 articles, a search for similar publications was conducted.\n\n{{#each steps.find_related_articles.output}}\n### 2.{{@index + 1}} Publications Related to \"{{this.sourceArticleTitle}}\" (PMID: {{this.sourcePmid}})\n\n{{#if (lookup ../steps.fetch_related_articles_details.output @index)}}\n  {{#each (lookup ../steps.fetch_related_articles_details.output @index).results}}\n#### 2.{{../@index + 1}}.{{@index + 1}} {{this.title}}\n\n- **Authors:** {{#each this.authors}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}\n- **Journal:** {{this.journalInfo.journal.title}} ({{this.journalInfo.publicationYear}})\n- **PMID:** `{{this.pmid}}`\n- **DOI:** [{{this.doi}}](https://doi.org/{{this.doi}})\n\n**Abstract:**\n> {{this.abstract | replace: '\\n', '\\n> '}}\n\n  {{/each}}\n{{else}}\n*No related articles found or an error occurred while fetching details.*\n{{/if}}\n---\n{{/each}}\n\n## End of Report\n"
+        }
+      }
+    ],
+    "filePath": "categories/research_operations/pubmed-research-workflow.yaml"
+  },
+  {
+    "name": "Website Content Scraper and Archiver",
+    "version": "1.0.0",
+    "description": "Scrapes the main content of a given URL and saves it as a markdown file for archival or analysis.",
+    "author": "Content Team",
+    "created_date": "2025-06-13",
+    "last_updated_date": "2025-06-13",
+    "category": "Web Operations",
+    "tags": [
+      "web",
+      "scrape",
+      "archive",
+      "firecrawl"
+    ],
+    "steps": [
+      {
+        "server": "firecrawl-mcp-server",
+        "tool": "firecrawl_scrape",
+        "action": "scrape_website",
+        "params": {
+          "url": "{{input.url}}",
+          "formats": [
+            "markdown"
+          ],
+          "onlyMainContent": true
+        },
+        "description": "Scrape the main content of the specified URL in markdown format."
+      },
+      {
+        "server": "filesystem-mcp-server",
+        "tool": "write_file",
+        "action": "save_scraped_content",
+        "params": {
+          "path": "scraped_content_{{input.url | slugify}}.md",
+          "content": "{{steps.scrape_website.output.markdown}}"
+        },
+        "description": "Save the scraped markdown content to a local file."
+      }
+    ],
+    "filePath": "categories/web_operations/website-scraper-workflow.yaml"
   }
 ]
