@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2025-06-14
+
+### Added
+
+- **Workflow Creator Tool**: Introduced a new `workflow_create_new` tool that allows for the dynamic creation of new workflow YAML files via a structured input. This tool automatically handles file creation, proper categorization, and re-indexing of available workflows.
+
+### Changed
+
+- **Dependencies**: Updated various dependencies to their latest versions for improved performance and security. This includes an update to `@modelcontextprotocol/sdk` and the removal of several unused packages.
+
 ## [1.0.2] - 2025-06-13
 
 ### Added

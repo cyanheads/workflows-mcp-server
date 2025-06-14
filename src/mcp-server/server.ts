@@ -19,6 +19,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { config, environment } from "../config/index.js";
 import { workflowIndexService } from "../services/workflow-indexer/index.js";
 import { ErrorHandler, logger, requestContextService } from "../utils/index.js";
+import { registerWorkflowCreatorTool } from "./tools/workflowCreator/index.js";
 import { registerWorkflowInstructionsGetterTool } from "./tools/workflowInstructionsGetter/index.js";
 import { registerWorkflowListerTool } from "./tools/workflowLister/index.js";
 import { startHttpTransport } from "./transports/httpTransport.js";
@@ -80,6 +81,7 @@ async function createMcpServerInstance(): Promise<McpServer> {
     logger.debug("Registering resources and tools...", context);
     await registerWorkflowListerTool(server);
     await registerWorkflowInstructionsGetterTool(server);
+    await registerWorkflowCreatorTool(server);
     logger.info("Resources and tools registered successfully", context);
   } catch (err) {
     logger.error("Failed to register resources/tools", {

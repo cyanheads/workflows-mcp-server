@@ -75,7 +75,7 @@ class WorkflowIndexService {
     logger.info(`WorkflowIndexService initialized. Watching for changes in: ${this.CATEGORIES_DIR}`, context);
   }
 
-  private async buildIndex(context: RequestContext): Promise<void> {
+  public async buildIndex(context: RequestContext): Promise<void> {
     logger.info('Building workflow index from scratch...', context);
     const newIndex = new Map<string, WorkflowMetadata>();
     try {
