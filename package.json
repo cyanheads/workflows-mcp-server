@@ -34,18 +34,13 @@
     "db:duckdb-example": "MCP_LOG_LEVEL=debug tsc && node dist/storage/duckdbExample.js"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.3.0-alpha.21",
     "@hono/node-server": "^1.14.4",
-    "@modelcontextprotocol/sdk": "^1.12.2",
-    "@node-oauth/oauth2-server": "^5.2.0",
-    "@supabase/supabase-js": "^2.50.0",
+    "@modelcontextprotocol/sdk": "^1.12.3",
     "@types/node": "^24.0.1",
     "@types/sanitize-html": "^2.16.0",
     "@types/validator": "13.15.1",
-    "chalk": "^5.4.1",
     "chokidar": "^4.0.3",
     "chrono-node": "^2.8.0",
-    "cli-table3": "^0.6.5",
     "dotenv": "^16.5.0",
     "hono": "^4.7.11",
     "ignore": "^7.0.5",
@@ -53,14 +48,14 @@
     "openai": "^5.3.0",
     "partial-json": "^0.1.7",
     "sanitize-html": "^2.17.0",
+    "semver": "^7.7.2",
     "tiktoken": "^1.0.21",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
     "validator": "13.15.15",
     "winston": "^3.17.0",
-    "yargs": "^18.0.0",
-    "zod": "^3.25.64",
-    "semver": "^7.7.2"
+    "winston-transport": "^4.9.0",
+    "zod": "^3.25.64"
   },
   "keywords": [
     "typescript",
@@ -91,12 +86,11 @@
   "devDependencies": {
     "@types/chokidar": "^2.1.7",
     "@types/js-yaml": "^4.0.9",
-    "@types/node-fetch": "^2.6.12",
     "@types/semver": "^7.7.0",
-    "axios": "^1.9.0",
+    "axios": "^1.10.0",
+    "depcheck": "^1.4.7",
     "js-yaml": "^4.1.0",
     "prettier": "^3.5.3",
-    "supabase": "^2.24.3",
     "typedoc": "^0.28.5"
   }
 }
