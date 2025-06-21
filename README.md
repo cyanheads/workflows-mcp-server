@@ -1,9 +1,9 @@
 # MCP Workflow Orchestration Server 🚀
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-^5.8.3-blue.svg)](https://www.typescriptlang.org/)
-[![Model Context Protocol SDK](https://img.shields.io/badge/MCP%20SDK-1.12.1-green.svg)](https://github.com/modelcontextprotocol/typescript-sdk)
+[![Model Context Protocol SDK](https://img.shields.io/badge/MCP%20SDK-1.13.0-green.svg)](https://github.com/modelcontextprotocol/typescript-sdk)
 [![MCP Spec Version](https://img.shields.io/badge/MCP%20Spec-2025--03--26-lightgrey.svg)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-03-26/changelog.mdx)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.0.4-blue.svg)](./CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Status](https://img.shields.io/badge/Status-Active-green.svg)](https://github.com/cyanheads/workflows-mcp-server/issues)
 [![GitHub](https://img.shields.io/github/stars/cyanheads/workflows-mcp-server?style=social)](https://github.com/cyanheads/workflows-mcp-server)
@@ -148,6 +148,18 @@ steps:
   - `name` (string, required): The exact name of the workflow to retrieve.
   - `version` (string, optional): The specific version to retrieve. If omitted, the latest version is returned.
 - **Output:** The full JSON representation of the requested workflow, with the `instructions` field prepended.
+
+### 3. `workflow_create_new`
+
+- **Description:** Creates a new workflow YAML file from a structured input. It places the file in the correct category directory and automatically triggers a re-indexing of available workflows.
+- **Input Parameters:** A JSON object matching the workflow YAML structure (name, version, description, author, category, tags, steps).
+- **Output:** A confirmation message with the path to the newly created file.
+
+### 4. `workflow_create_temporary`
+
+- **Description:** Creates a new "temporary" workflow YAML file that is callable by name but excluded from the main workflow list. This is useful for an agent to define a multi-step process for a long-running or complex task, which can be used by itself or passed to another agent.
+- **Input Parameters:** A JSON object matching the workflow YAML structure.
+- **Output:** A confirmation message with the path to the newly created temporary file.
 
 ## ⚙️ System Behavior: Global Instruction Injection
 
