@@ -1,7 +1,7 @@
 {
   "name": "workflows-mcp-server",
-  "version": "1.0.1",
-  "description": "An MCP (Model Context Protocol) server for orchestrating complex, multi-step workflows defined in YAML.",
+  "version": "1.0.4",
+  "description": "An MCP (Model Context Protocol) server that enables AI agents to discover, create, and execute complex, multi-step workflows defined in simple YAML files. Allow your AI agents to better organize their tool usage and provide a more structured way to handle complex multi-step tasks.",
   "main": "dist/index.js",
   "files": [
     "dist"
@@ -66,7 +66,11 @@
     "mcp-server",
     "workflows",
     "orchestration",
-    "yaml"
+    "yaml",
+    "automation",
+    "agent",
+    "ai-agent",
+    "multi-agent"
   ],
   "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/workflows-mcp-server#readme)",
   "license": "Apache-2.0",
