@@ -1,6 +1,6 @@
 {
   "name": "workflows-mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An MCP (Model Context Protocol) server for orchestrating complex, multi-step workflows defined in YAML.",
   "main": "dist/index.js",
   "files": [
@@ -35,17 +35,17 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
-    "@modelcontextprotocol/sdk": "^1.12.3",
-    "@types/node": "^24.0.1",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "@types/node": "^24.0.3",
     "@types/sanitize-html": "^2.16.0",
-    "@types/validator": "13.15.1",
+    "@types/validator": "13.15.2",
     "chokidar": "^4.0.3",
     "chrono-node": "^2.8.0",
     "dotenv": "^16.5.0",
-    "hono": "^4.7.11",
+    "hono": "^4.8.2",
     "ignore": "^7.0.5",
     "jose": "^6.0.11",
-    "openai": "^5.3.0",
+    "openai": "^5.6.0",
     "partial-json": "^0.1.7",
     "sanitize-html": "^2.17.0",
     "semver": "^7.7.2",
@@ -55,7 +55,7 @@
     "validator": "13.15.15",
     "winston": "^3.17.0",
     "winston-transport": "^4.9.0",
-    "zod": "^3.25.64"
+    "zod": "^3.25.67"
   },
   "keywords": [
     "typescript",
@@ -88,7 +88,6 @@
     "@types/js-yaml": "^4.0.9",
     "@types/semver": "^7.7.0",
     "axios": "^1.10.0",
-    "depcheck": "^1.4.7",
     "js-yaml": "^4.1.0",
     "prettier": "^3.5.3",
     "typedoc": "^0.28.5"

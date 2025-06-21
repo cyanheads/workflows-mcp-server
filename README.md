@@ -24,38 +24,41 @@ A key feature of this system is the dynamic injection of **global instructions**
 
 ## ✨ Core Concepts
 
--   **Workflow:** A predefined sequence of steps defined in a `.yaml` file. Each step specifies an action to be performed by a tool on a designated MCP server.
--   **YAML Structure:** A human-readable format for defining workflow metadata and the sequence of execution steps.
--   **Tools:** The functions exposed to the LLM, serving as the primary interface for interacting with the workflow system.
--   **Global Instructions:** A centrally-managed set of directives that are dynamically injected into every workflow definition upon request, providing consistent, high-level guidance on execution strategy.
+- **Workflow:** A predefined sequence of steps defined in a `.yaml` file. Each step specifies an action to be performed by a tool on a designated MCP server.
+- **YAML Structure:** A human-readable format for defining workflow metadata and the sequence of execution steps.
+- **Tools:** The functions exposed to the LLM, serving as the primary interface for interacting with the workflow system.
+- **Global Instructions:** A centrally-managed set of directives that are dynamically injected into every workflow definition upon request, providing consistent, high-level guidance on execution strategy.
 
 ## 🏁 Quick Start
 
 1.  **Clone the repository:**
+
     ```bash
     git clone https://github.com/cyanheads/workflows-mcp-server.git
     cd workflows-mcp-server
     ```
 
 2.  **Install dependencies:**
+
     ```bash
     npm install
     ```
 
 3.  **Build the project:**
+
     ```bash
     npm run build
     ```
 
 4.  **Run the Server:**
-    -   **Via Stdio (for integration with an MCP Host):**
-        ```bash
-        npm run start:stdio
-        ```
-    -   **Via HTTP (for network-based access):**
-        ```bash
-        npm run start:http
-        ```
+    - **Via Stdio (for integration with an MCP Host):**
+      ```bash
+      npm run start:stdio
+      ```
+    - **Via HTTP (for network-based access):**
+      ```bash
+      npm run start:http
+      ```
 
 ## 📂 Workflow YAML Structure
 
@@ -132,27 +135,27 @@ steps:
 
 ### 1. `workflow_return_list`
 
--   **Description:** Retrieves a list of available workflows, providing key metadata for each. This tool allows for discovery and filtering based on categories and tags.
--   **Input Parameters:**
-    -   `category` (string, optional): Filters the list to workflows within a specific category.
-    -   `tags` (list of strings, optional): Filters the list to workflows that have **all** of the specified tags.
--   **Output:** A JSON array of objects, where each object represents a workflow and contains its core metadata.
+- **Description:** Retrieves a list of available workflows, providing key metadata for each. This tool allows for discovery and filtering based on categories and tags.
+- **Input Parameters:**
+  - `category` (string, optional): Filters the list to workflows within a specific category.
+  - `tags` (list of strings, optional): Filters the list to workflows that have **all** of the specified tags.
+- **Output:** A JSON array of objects, where each object represents a workflow and contains its core metadata.
 
 ### 2. `workflow_get_instructions`
 
--   **Description:** Retrieves the complete, detailed definition for a single, specified workflow, including the dynamically injected global instructions.
--   **Input Parameters:**
-    -   `name` (string, required): The exact name of the workflow to retrieve.
-    -   `version` (string, optional): The specific version to retrieve. If omitted, the latest version is returned.
--   **Output:** The full JSON representation of the requested workflow, with the `instructions` field prepended.
+- **Description:** Retrieves the complete, detailed definition for a single, specified workflow, including the dynamically injected global instructions.
+- **Input Parameters:**
+  - `name` (string, required): The exact name of the workflow to retrieve.
+  - `version` (string, optional): The specific version to retrieve. If omitted, the latest version is returned.
+- **Output:** The full JSON representation of the requested workflow, with the `instructions` field prepended.
 
 ## ⚙️ System Behavior: Global Instruction Injection
 
 The server has a critical responsibility regarding the `instructions` field.
 
--   **Central Source:** The server maintains a single, global source for the instructions (e.g., a `.txt` or `.md` file).
--   **Dynamic Injection:** On every call to `workflow_get_instructions`, the server reads the content of the global instructions file.
--   **Response Merging:** The server parses the requested workflow YAML and merges the global instructions into the final JSON object returned to the client.
+- **Central Source:** The server maintains a single, global source for the instructions (e.g., a `.txt` or `.md` file).
+- **Dynamic Injection:** On every call to `workflow_get_instructions`, the server reads the content of the global instructions file.
+- **Response Merging:** The server parses the requested workflow YAML and merges the global instructions into the final JSON object returned to the client.
 
 This behavior ensures that any update to the global instructions is immediately propagated to the LLM without requiring modifications to individual workflow files.
 

@@ -5,4 +5,4 @@
  * @module src/mcp-server/tools/workflowLister/index
  */
 
-export { registerWorkflowListerTool } from './registration.js';
+export { registerWorkflowListerTool } from "./registration.js";

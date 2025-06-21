@@ -1,7 +1,8 @@
 /**
- * @fileoverview Defines the core logic for the workflow_create_new tool.
- * This tool generates a new workflow YAML file from a structured input.
- * @module src/mcp-server/tools/workflowCreator/logic
+ * @fileoverview Defines the core logic for the workflow_create_temporary tool.
+ * This tool generates a new "temporary" workflow YAML file from a structured input,
+ * which is callable by name but excluded from the main workflow list.
+ * @module src/mcp-server/tools/workflowTemporaryCreator/logic
  */
 
 import { z } from "zod";
@@ -11,7 +12,6 @@ import { fileURLToPath } from "url";
 import yaml from "js-yaml";
 import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import { logger, type RequestContext } from "../../../utils/index.js";
-import { workflowIndexService } from "../../../services/workflow-indexer/index.js";
 
 // --- Zod Schemas ---
 
@@ -31,7 +31,7 @@ const StepSchema = z.object({
     .describe("A key-value map of parameters for the tool."),
 });
 
-export const WorkflowCreatorInputSchema = z
+export const WorkflowTemporaryCreatorInputSchema = z
   .object({
     name: z
       .string()
@@ -53,10 +53,8 @@ export const WorkflowCreatorInputSchema = z
       .describe("The author or team responsible for the workflow."),
     category: z
       .string()
-      .min(1, "Category cannot be empty.")
-      .describe(
-        'The category to place the workflow under (e.g., "Research Operations").',
-      ),
+      .default("Temporary")
+      .describe('The category for the workflow, defaults to "Temporary".'),
     tags: z
       .array(z.string())
       .optional()
@@ -67,10 +65,12 @@ export const WorkflowCreatorInputSchema = z
       .describe("The sequence of steps to be executed."),
   })
   .describe(
-    "Defines the structured input for creating a new workflow YAML file.",
+    "Defines the structured input for creating a new temporary workflow YAML file.",
   );
 
-export type WorkflowCreatorInput = z.infer<typeof WorkflowCreatorInputSchema>;
+export type WorkflowTemporaryCreatorInput = z.infer<
+  typeof WorkflowTemporaryCreatorInputSchema
+>;
 
 // --- Core Logic ---
 
@@ -93,29 +93,29 @@ const slugify = (text: string): string => {
 };
 
 /**
- * Processes the core logic for the `workflow_create_new` tool.
+ * Processes the core logic for the `workflow_create_temporary` tool.
  * @param params - The validated input parameters.
  * @param context - The request context.
  * @returns A promise that resolves to the path of the newly created workflow file.
  */
-export const processWorkflowCreate = async (
-  params: WorkflowCreatorInput,
+export const processWorkflowTemporaryCreate = async (
+  params: WorkflowTemporaryCreatorInput,
   context: RequestContext,
 ): Promise<{ filePath: string; yamlContent: string }> => {
-  logger.debug("Processing workflow_create_new logic.", {
+  logger.debug("Processing workflow_create_temporary logic.", {
     ...context,
     toolInput: params,
   });
 
-  const { category, name, ...workflowData } = params;
+  const { name, ...workflowData } = params;
   const today = new Date().toISOString().split("T")[0];
 
   const workflowObject = {
     name,
     ...workflowData,
+    temporary: true, // Mark this workflow as temporary
     created_date: today,
     last_updated_date: today,
-    category,
   };
 
   const yamlContent = yaml.dump(workflowObject, {
@@ -124,52 +124,30 @@ export const processWorkflowCreate = async (
   });
 
   const fileName = `${slugify(name)}-workflow.yaml`;
-  const categoryDir = path.join(
-    WORKFLOWS_BASE_DIR,
-    "categories",
-    slugify(category),
-  );
-  const filePath = path.join(categoryDir, fileName);
+  const tempDir = path.join(WORKFLOWS_BASE_DIR, "temp");
+  const filePath = path.join(tempDir, fileName);
 
   try {
-    // Check if the file already exists to prevent overwriting
-    try {
-      await fs.access(filePath);
-      // If access does not throw, the file exists
-      throw new McpError(
-        BaseErrorCode.CONFLICT,
-        `A workflow with the name "${name}" already exists at ${filePath}.`,
-        context,
-      );
-    } catch (accessError: any) {
-      // If the error is anything other than 'file not found', rethrow it.
-      if (accessError.code !== "ENOENT") {
-        throw accessError;
-      }
-      // Otherwise, the file does not exist, and we can proceed.
-    }
-
-    await fs.mkdir(categoryDir, { recursive: true });
+    await fs.mkdir(tempDir, { recursive: true });
     await fs.writeFile(filePath, yamlContent, "utf-8");
-    logger.info(`Successfully created workflow file at: ${filePath}`, context);
+    logger.info(
+      `Successfully created temporary workflow file at: ${filePath}`,
+      context,
+    );
 
-    // Trigger re-indexing after creating a new file
-    await workflowIndexService.buildIndex(context);
+    // Do NOT trigger re-indexing for temporary workflows.
+    // They will be picked up if they are ever made permanent and the index is rebuilt.
 
     return { filePath, yamlContent };
   } catch (error) {
-    // If the error is already an McpError, re-throw it to preserve the specific error code.
-    if (error instanceof McpError) {
-      throw error;
-    }
     logger.error(
-      `Failed to create workflow file at: ${filePath}`,
+      `Failed to create temporary workflow file at: ${filePath}`,
       error as Error,
       context,
     );
     throw new McpError(
       BaseErrorCode.INTERNAL_ERROR,
-      `Could not create workflow file: ${filePath}`,
+      `Could not create temporary workflow file: ${filePath}`,
       { ...context, originalError: error },
     );
   }

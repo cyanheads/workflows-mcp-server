@@ -1,7 +1,7 @@
 /**
- * @fileoverview Handles the registration of the `workflow_get_instructions` tool
+ * @fileoverview Handles the registration of the `workflow_create_temporary` tool
  * with an MCP server instance.
- * @module src/mcp-server/tools/workflowInstructionsGetter/registration
+ * @module src/mcp-server/tools/workflowTemporaryCreator/registration
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -13,30 +13,30 @@ import {
   RequestContext,
   requestContextService,
 } from "../../../utils/index.js";
-import type { WorkflowInstructionsGetterInput } from "./logic.js";
+import type { WorkflowTemporaryCreatorInput } from "./logic.js";
 import {
-  processWorkflowInstructionsGetter,
-  WorkflowInstructionsGetterInputSchema,
+  processWorkflowTemporaryCreate,
+  WorkflowTemporaryCreatorInputSchema,
 } from "./logic.js";
 
 /**
- * Registers the 'workflow_get_instructions' tool with the MCP server.
+ * Registers the 'workflow_create_temporary' tool with the MCP server.
  *
  * @param server - The MCP server instance to register the tool with.
  * @returns A promise that resolves when tool registration is complete.
  */
-export const registerWorkflowInstructionsGetterTool = async (
+export const registerWorkflowTemporaryCreatorTool = async (
   server: McpServer,
 ): Promise<void> => {
-  const toolName = "workflow_get_instructions";
+  const toolName = "workflow_create_temporary";
   const toolDescription =
-    "Retrieves the complete definition for a single workflow by its unique `name`. It provides the workflow's steps, parameters, and metadata to perform the defined automation. The definition is augmented with global instructions to provide the full context required for execution. View workflows as instructions to follow, adjusting to your specific task needs, environment, and relevant data. This tool is to be used in conjunction with your other available tools & resources.";
+    'Creates a new "temporary" workflow YAML file that is callable by name but excluded from the main workflow list. This is useful for if you need to collect your thoughts or define a multi-step process for a long-running or complex task, which can be used by itself or passed to another agent by supplying the workflow name.';
 
   const registrationContext: RequestContext =
     requestContextService.createRequestContext({
       operation: "RegisterTool",
       toolName: toolName,
-      moduleName: "WorkflowInstructionsGetterRegistration",
+      moduleName: "WorkflowTemporaryCreatorRegistration",
     });
 
   logger.info(
@@ -49,9 +49,9 @@ export const registerWorkflowInstructionsGetterTool = async (
       server.tool(
         toolName,
         toolDescription,
-        WorkflowInstructionsGetterInputSchema.shape,
+        WorkflowTemporaryCreatorInputSchema.shape,
         async (
-          params: WorkflowInstructionsGetterInput,
+          params: WorkflowTemporaryCreatorInput,
         ): Promise<CallToolResult> => {
           const handlerContext: RequestContext =
             requestContextService.createRequestContext({
@@ -65,7 +65,7 @@ export const registerWorkflowInstructionsGetterTool = async (
 
           return await ErrorHandler.tryCatch(
             async () => {
-              const responsePayload = await processWorkflowInstructionsGetter(
+              const responsePayload = await processWorkflowTemporaryCreate(
                 params,
                 handlerContext,
               );
@@ -79,7 +79,7 @@ export const registerWorkflowInstructionsGetterTool = async (
                 content: [
                   {
                     type: "text",
-                    text: JSON.stringify(responsePayload, null, 2),
+                    text: `Success, file saved to ${responsePayload.filePath}. Here is the workflow that was created:\n\n---\n\n${responsePayload.yamlContent}`,
                   },
                 ],
                 isError: false,

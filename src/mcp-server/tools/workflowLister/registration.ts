@@ -4,17 +4,17 @@
  * @module src/mcp-server/tools/workflowLister/registration
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { BaseErrorCode, McpError } from '../../../types-global/errors.js';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
   RequestContext,
   requestContextService,
-} from '../../../utils/index.js';
-import type { WorkflowListerInput } from './logic.js';
-import { processWorkflowLister, WorkflowListerInputSchema } from './logic.js';
+} from "../../../utils/index.js";
+import type { WorkflowListerInput } from "./logic.js";
+import { processWorkflowLister, WorkflowListerInputSchema } from "./logic.js";
 
 /**
  * Registers the 'workflow_return_list' tool with the MCP server.
@@ -25,18 +25,21 @@ import { processWorkflowLister, WorkflowListerInputSchema } from './logic.js';
 export const registerWorkflowListerTool = async (
   server: McpServer,
 ): Promise<void> => {
-  const toolName = 'workflow_return_list';
+  const toolName = "workflow_return_list";
   const toolDescription =
-    'Discovers and lists available workflows. It provides a list of workflow metadata (name, description, version, etc.) to identify the correct automation to execute. Includes a filter to narrow the results by `category` or `tags` to find a specific workflow.';
+    "Discovers and lists available workflows. It provides a list of workflow metadata (name, description, version, etc.) to identify the correct automation to execute. Includes a filter to narrow the results by `category` or `tags` to find a specific workflow.";
 
   const registrationContext: RequestContext =
     requestContextService.createRequestContext({
-      operation: 'RegisterTool',
+      operation: "RegisterTool",
       toolName: toolName,
-      moduleName: 'WorkflowListerRegistration',
+      moduleName: "WorkflowListerRegistration",
     });
 
-  logger.info(`Attempting to register tool: '${toolName}'`, registrationContext);
+  logger.info(
+    `Attempting to register tool: '${toolName}'`,
+    registrationContext,
+  );
 
   await ErrorHandler.tryCatch(
     async () => {
@@ -48,7 +51,7 @@ export const registerWorkflowListerTool = async (
           const handlerContext: RequestContext =
             requestContextService.createRequestContext({
               parentContext: registrationContext,
-              operation: 'HandleToolRequest',
+              operation: "HandleToolRequest",
               toolName: toolName,
               inputSummary: params,
             });
@@ -62,12 +65,15 @@ export const registerWorkflowListerTool = async (
                 handlerContext,
               );
 
-              logger.debug(`'${toolName}' tool processed successfully.`, handlerContext);
+              logger.debug(
+                `'${toolName}' tool processed successfully.`,
+                handlerContext,
+              );
 
               return {
                 content: [
                   {
-                    type: 'text',
+                    type: "text",
                     text: JSON.stringify(responsePayload, null, 2),
                   },
                 ],
@@ -80,13 +86,14 @@ export const registerWorkflowListerTool = async (
               input: params,
               errorMapper: (error: unknown): McpError => {
                 if (error instanceof McpError) return error;
-                const errorMessage = `Error processing '${toolName}' tool: ${error instanceof Error ? error.message : 'An unknown error occurred'}`;
+                const errorMessage = `Error processing '${toolName}' tool: ${error instanceof Error ? error.message : "An unknown error occurred"}`;
                 return new McpError(
                   BaseErrorCode.INTERNAL_ERROR,
                   errorMessage,
                   {
                     ...handlerContext,
-                    originalErrorName: error instanceof Error ? error.name : typeof error,
+                    originalErrorName:
+                      error instanceof Error ? error.name : typeof error,
                   },
                 );
               },
@@ -95,7 +102,10 @@ export const registerWorkflowListerTool = async (
         },
       );
 
-      logger.info(`Tool '${toolName}' registered successfully.`, registrationContext);
+      logger.info(
+        `Tool '${toolName}' registered successfully.`,
+        registrationContext,
+      );
     },
     {
       operation: `RegisteringTool_${toolName}`,

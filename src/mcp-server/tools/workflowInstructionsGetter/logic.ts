@@ -5,17 +5,17 @@
  * @module src/mcp-server/tools/workflowInstructionsGetter/logic
  */
 
-import { z } from 'zod';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import { z } from "zod";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { fileURLToPath } from "url";
+import yaml from "js-yaml";
 import {
   workflowIndexService,
   type Workflow,
-} from '../../../services/workflow-indexer/index.js';
-import { BaseErrorCode, McpError } from '../../../types-global/errors.js';
-import { logger, type RequestContext } from '../../../utils/index.js';
+} from "../../../services/workflow-indexer/index.js";
+import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
+import { logger, type RequestContext } from "../../../utils/index.js";
 
 /**
  * The final structure returned by the tool, including the injected instructions.
@@ -28,7 +28,7 @@ export const WorkflowInstructionsGetterInputSchema = z
   .object({
     name: z
       .string()
-      .min(1, 'Workflow name cannot be empty.')
+      .min(1, "Workflow name cannot be empty.")
       .describe(
         'Required. The exact, case-sensitive name of the workflow to retrieve. This name must match the `name` field in the workflow\'s YAML definition. Example: "Process and Archive New User Images"',
       ),
@@ -40,7 +40,7 @@ export const WorkflowInstructionsGetterInputSchema = z
       ),
   })
   .describe(
-    'Defines the input for retrieving a complete, executable workflow definition. This tool fetches a specific workflow by its `name` and optional `version`, then prepends a set of global instructions to it, making it ready for execution.',
+    "Defines the input for retrieving a complete, executable workflow definition. This tool fetches a specific workflow by its `name` and optional `version`, then prepends a set of global instructions to it, making it ready for execution.",
   );
 
 export type WorkflowInstructionsGetterInput = z.infer<
@@ -52,10 +52,13 @@ export type WorkflowInstructionsGetterInput = z.infer<
 // Resolve path relative to the current module file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const WORKFLOWS_BASE_DIR = path.resolve(__dirname, '../../../../workflows-yaml');
+const WORKFLOWS_BASE_DIR = path.resolve(
+  __dirname,
+  "../../../../workflows-yaml",
+);
 const INSTRUCTIONS_FILE_PATH = path.join(
   WORKFLOWS_BASE_DIR,
-  'global_instructions.md',
+  "global_instructions.md",
 );
 
 /**
@@ -72,7 +75,11 @@ async function findAndParseWorkflow(
   version: string | undefined,
   context: RequestContext,
 ): Promise<Workflow> {
-  const workflowMeta = workflowIndexService.findWorkflow(name, version, context);
+  const workflowMeta = workflowIndexService.findWorkflow(
+    name,
+    version,
+    context,
+  );
 
   if (!workflowMeta) {
     const message = version
@@ -82,14 +89,25 @@ async function findAndParseWorkflow(
   }
 
   const absoluteFilePath = path.join(WORKFLOWS_BASE_DIR, workflowMeta.filePath);
-  logger.debug(`Found workflow in index. Reading from: ${absoluteFilePath}`, context);
+  logger.debug(
+    `Found workflow in index. Reading from: ${absoluteFilePath}`,
+    context,
+  );
 
   try {
-    const finalContent = await fs.readFile(absoluteFilePath, 'utf-8');
+    const finalContent = await fs.readFile(absoluteFilePath, "utf-8");
     return yaml.load(finalContent) as Workflow;
   } catch (error) {
-    logger.error(`Failed to read or parse workflow file: ${absoluteFilePath}`, error as Error, context);
-    throw new McpError(BaseErrorCode.INTERNAL_ERROR, `Could not read or parse workflow file: ${workflowMeta.filePath}`, { ...context, originalError: error });
+    logger.error(
+      `Failed to read or parse workflow file: ${absoluteFilePath}`,
+      error as Error,
+      context,
+    );
+    throw new McpError(
+      BaseErrorCode.INTERNAL_ERROR,
+      `Could not read or parse workflow file: ${workflowMeta.filePath}`,
+      { ...context, originalError: error },
+    );
   }
 }
 
@@ -103,15 +121,15 @@ export const processWorkflowInstructionsGetter = async (
   params: WorkflowInstructionsGetterInput,
   context: RequestContext,
 ): Promise<WorkflowWithInstructions> => {
-  logger.debug('Processing workflow_get_instructions logic.', {
+  logger.debug("Processing workflow_get_instructions logic.", {
     ...context,
     toolInput: params,
   });
 
   // 1. Read Global Instructions
-  let instructions = '';
+  let instructions = "";
   try {
-    instructions = await fs.readFile(INSTRUCTIONS_FILE_PATH, 'utf-8');
+    instructions = await fs.readFile(INSTRUCTIONS_FILE_PATH, "utf-8");
   } catch (error) {
     logger.error(
       `Critical error: Could not read global instructions file at ${INSTRUCTIONS_FILE_PATH}`,
@@ -119,7 +137,7 @@ export const processWorkflowInstructionsGetter = async (
     );
     throw new McpError(
       BaseErrorCode.CONFIGURATION_ERROR,
-      'Global instructions file is missing or unreadable.',
+      "Global instructions file is missing or unreadable.",
       { ...context, originalError: error },
     );
   }

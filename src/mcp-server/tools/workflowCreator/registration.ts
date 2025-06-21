@@ -4,17 +4,17 @@
  * @module src/mcp-server/tools/workflowCreator/registration
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { BaseErrorCode, McpError } from '../../../types-global/errors.js';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
   RequestContext,
   requestContextService,
-} from '../../../utils/index.js';
-import type { WorkflowCreatorInput } from './logic.js';
-import { processWorkflowCreate, WorkflowCreatorInputSchema } from './logic.js';
+} from "../../../utils/index.js";
+import type { WorkflowCreatorInput } from "./logic.js";
+import { processWorkflowCreate, WorkflowCreatorInputSchema } from "./logic.js";
 
 /**
  * Registers the 'workflow_create_new' tool with the MCP server.
@@ -25,18 +25,21 @@ import { processWorkflowCreate, WorkflowCreatorInputSchema } from './logic.js';
 export const registerWorkflowCreatorTool = async (
   server: McpServer,
 ): Promise<void> => {
-  const toolName = 'workflow_create_new';
+  const toolName = "workflow_create_new";
   const toolDescription =
-    'Creates a new workflow YAML file from a structured input. It places the file in the correct category directory and automatically triggers a re-indexing of available workflows.';
+    "Creates a new workflow YAML file from a structured input. It places the file in the correct category directory and automatically triggers a re-indexing of available workflows.";
 
   const registrationContext: RequestContext =
     requestContextService.createRequestContext({
-      operation: 'RegisterTool',
+      operation: "RegisterTool",
       toolName: toolName,
-      moduleName: 'WorkflowCreatorRegistration',
+      moduleName: "WorkflowCreatorRegistration",
     });
 
-  logger.info(`Attempting to register tool: '${toolName}'`, registrationContext);
+  logger.info(
+    `Attempting to register tool: '${toolName}'`,
+    registrationContext,
+  );
 
   await ErrorHandler.tryCatch(
     async () => {
@@ -48,7 +51,7 @@ export const registerWorkflowCreatorTool = async (
           const handlerContext: RequestContext =
             requestContextService.createRequestContext({
               parentContext: registrationContext,
-              operation: 'HandleToolRequest',
+              operation: "HandleToolRequest",
               toolName: toolName,
               inputSummary: params,
             });
@@ -62,13 +65,16 @@ export const registerWorkflowCreatorTool = async (
                 handlerContext,
               );
 
-              logger.debug(`'${toolName}' tool processed successfully.`, handlerContext);
+              logger.debug(
+                `'${toolName}' tool processed successfully.`,
+                handlerContext,
+              );
 
               return {
                 content: [
                   {
-                    type: 'text',
-                    text: `Successfully created workflow file at: ${responsePayload.filePath}`,
+                    type: "text",
+                    text: `Success, file saved to ${responsePayload.filePath}. Here is the workflow that was created:\n\n---\n\n${responsePayload.yamlContent}`,
                   },
                 ],
                 isError: false,
@@ -80,13 +86,14 @@ export const registerWorkflowCreatorTool = async (
               input: params,
               errorMapper: (error: unknown): McpError => {
                 if (error instanceof McpError) return error;
-                const errorMessage = `Error processing '${toolName}' tool: ${error instanceof Error ? error.message : 'An unknown error occurred'}`;
+                const errorMessage = `Error processing '${toolName}' tool: ${error instanceof Error ? error.message : "An unknown error occurred"}`;
                 return new McpError(
                   BaseErrorCode.INTERNAL_ERROR,
                   errorMessage,
                   {
                     ...handlerContext,
-                    originalErrorName: error instanceof Error ? error.name : typeof error,
+                    originalErrorName:
+                      error instanceof Error ? error.name : typeof error,
                   },
                 );
               },
@@ -95,7 +102,10 @@ export const registerWorkflowCreatorTool = async (
         },
       );
 
-      logger.info(`Tool '${toolName}' registered successfully.`, registrationContext);
+      logger.info(
+        `Tool '${toolName}' registered successfully.`,
+        registrationContext,
+      );
     },
     {
       operation: `RegisteringTool_${toolName}`,

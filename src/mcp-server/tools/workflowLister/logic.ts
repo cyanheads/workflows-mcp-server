@@ -5,12 +5,12 @@
  * @module src/mcp-server/tools/workflowLister/logic
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import {
   workflowIndexService,
-  type WorkflowStep
-} from '../../../services/workflow-indexer/index.js';
-import { logger, type RequestContext } from '../../../utils/index.js';
+  type WorkflowStep,
+} from "../../../services/workflow-indexer/index.js";
+import { logger, type RequestContext } from "../../../utils/index.js";
 
 // --- Zod Schemas ---
 
@@ -36,11 +36,11 @@ export const WorkflowListerInputSchema = z
       .boolean()
       .optional()
       .describe(
-        'Optional. If true, includes a list of unique tools used in each workflow, formatted as `server_name/tool_name`.',
+        "Optional. If true, includes a list of unique tools used in each workflow, formatted as `server_name/tool_name`.",
       ),
   })
   .describe(
-    'Defines the input schema for the `workflow_return_list` tool. Use its optional parameters to discover and filter available workflows based on their metadata.',
+    "Defines the input schema for the `workflow_return_list` tool. Use its optional parameters to discover and filter available workflows based on their metadata.",
   );
 
 /**
@@ -70,7 +70,7 @@ export const processWorkflowLister = (
   params: WorkflowListerInput,
   context: RequestContext,
 ): WorkflowSummary[] => {
-  logger.debug('Processing workflow_return_list logic with parameters.', {
+  logger.debug("Processing workflow_return_list logic with parameters.", {
     ...context,
     toolInput: params,
   });
@@ -80,15 +80,15 @@ export const processWorkflowLister = (
   // Apply category filter
   if (params.category) {
     workflows = workflows.filter(
-      w => w.category.toLowerCase() === params.category?.toLowerCase(),
+      (w) => w.category.toLowerCase() === params.category?.toLowerCase(),
     );
   }
 
   // Apply tags filter
   if (params.tags && params.tags.length > 0) {
-    workflows = workflows.filter(w =>
-      params.tags!.every(tag =>
-        w.tags.map(t => t.toLowerCase()).includes(tag.toLowerCase()),
+    workflows = workflows.filter((w) =>
+      params.tags!.every((tag) =>
+        w.tags.map((t) => t.toLowerCase()).includes(tag.toLowerCase()),
       ),
     );
   }
@@ -99,7 +99,7 @@ export const processWorkflowLister = (
   );
 
   // Map to summarized format
-  return workflows.map(w => {
+  return workflows.map((w) => {
     const summary: WorkflowSummary = {
       name: w.name,
       description: w.description,

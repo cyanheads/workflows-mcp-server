@@ -83,114 +83,125 @@ try {
  * Provides type safety, validation, defaults, and clear error messages.
  * @private
  */
-const EnvSchema = z.object({
-  /** Optional. The desired name for the MCP server. Defaults to `package.json` name. */
-  MCP_SERVER_NAME: z.string().optional(),
-  /** Optional. The version of the MCP server. Defaults to `package.json` version. */
-  MCP_SERVER_VERSION: z.string().optional(),
-  /** Minimum logging level. See `McpLogLevel` in logger utility. Default: "debug". */
-  MCP_LOG_LEVEL: z.string().default("debug"),
-  /** Directory for log files. Defaults to "logs" in project root. */
-  LOGS_DIR: z.string().default(path.join(projectRoot, "logs")),
-  /** Runtime environment (e.g., "development", "production"). Default: "development". */
-  NODE_ENV: z.string().default("development"),
-  /** MCP communication transport ("stdio" or "http"). Default: "stdio". */
-  MCP_TRANSPORT_TYPE: z.enum(["stdio", "http"]).default("stdio"),
-  /** HTTP server port (if MCP_TRANSPORT_TYPE is "http"). Default: 3010. */
-  MCP_HTTP_PORT: z.coerce.number().int().positive().default(3010),
-  /** HTTP server host (if MCP_TRANSPORT_TYPE is "http"). Default: "127.0.0.1". */
-  MCP_HTTP_HOST: z.string().default("127.0.0.1"),
-  /** Optional. Comma-separated allowed origins for CORS (HTTP transport). */
-  MCP_ALLOWED_ORIGINS: z.string().optional(),
-  /** Optional. Secret key (min 32 chars) for auth tokens (HTTP transport). CRITICAL for production. */
-  MCP_AUTH_SECRET_KEY: z
-    .string()
-    .min(
-      32,
-      "MCP_AUTH_SECRET_KEY must be at least 32 characters long for security reasons.",
-    )
-    .optional(),
-  /** The authentication mode to use. 'jwt' for internal simple JWTs, 'oauth' for OAuth 2.1. Default: 'jwt'. */
-  MCP_AUTH_MODE: z.enum(["jwt", "oauth"]).default("jwt"),
-  /** The expected issuer URL for OAuth 2.1 access tokens. CRITICAL for validation. */
-  OAUTH_ISSUER_URL: z.string().url().optional(),
-  /** The JWKS (JSON Web Key Set) URI for the OAuth 2.1 provider. If not provided, it's often discoverable from the issuer URL. */
-  OAUTH_JWKS_URI: z.string().url().optional(),
-  /** The audience claim for the OAuth 2.1 access tokens. This server will reject tokens not intended for it. */
-  OAUTH_AUDIENCE: z.string().optional(),
+const EnvSchema = z
+  .object({
+    /** Optional. The desired name for the MCP server. Defaults to `package.json` name. */
+    MCP_SERVER_NAME: z.string().optional(),
+    /** Optional. The version of the MCP server. Defaults to `package.json` version. */
+    MCP_SERVER_VERSION: z.string().optional(),
+    /** Minimum logging level. See `McpLogLevel` in logger utility. Default: "debug". */
+    MCP_LOG_LEVEL: z.string().default("debug"),
+    /** Directory for log files. Defaults to "logs" in project root. */
+    LOGS_DIR: z.string().default(path.join(projectRoot, "logs")),
+    /** Runtime environment (e.g., "development", "production"). Default: "development". */
+    NODE_ENV: z.string().default("development"),
+    /** MCP communication transport ("stdio" or "http"). Default: "stdio". */
+    MCP_TRANSPORT_TYPE: z.enum(["stdio", "http"]).default("stdio"),
+    /** HTTP server port (if MCP_TRANSPORT_TYPE is "http"). Default: 3010. */
+    MCP_HTTP_PORT: z.coerce.number().int().positive().default(3010),
+    /** HTTP server host (if MCP_TRANSPORT_TYPE is "http"). Default: "127.0.0.1". */
+    MCP_HTTP_HOST: z.string().default("127.0.0.1"),
+    /** Optional. Comma-separated allowed origins for CORS (HTTP transport). */
+    MCP_ALLOWED_ORIGINS: z.string().optional(),
+    /** Optional. Secret key (min 32 chars) for auth tokens (HTTP transport). CRITICAL for production. */
+    MCP_AUTH_SECRET_KEY: z
+      .string()
+      .min(
+        32,
+        "MCP_AUTH_SECRET_KEY must be at least 32 characters long for security reasons.",
+      )
+      .optional(),
+    /** The authentication mode to use. 'jwt' for internal simple JWTs, 'oauth' for OAuth 2.1. Default: 'jwt'. */
+    MCP_AUTH_MODE: z.enum(["jwt", "oauth"]).default("jwt"),
+    /** The expected issuer URL for OAuth 2.1 access tokens. CRITICAL for validation. */
+    OAUTH_ISSUER_URL: z.string().url().optional(),
+    /** The JWKS (JSON Web Key Set) URI for the OAuth 2.1 provider. If not provided, it's often discoverable from the issuer URL. */
+    OAUTH_JWKS_URI: z.string().url().optional(),
+    /** The audience claim for the OAuth 2.1 access tokens. This server will reject tokens not intended for it. */
+    OAUTH_AUDIENCE: z.string().optional(),
 
-  /** Optional. Application URL for OpenRouter integration. */
-  OPENROUTER_APP_URL: z
-    .string()
-    .url("OPENROUTER_APP_URL must be a valid URL (e.g., http://localhost:3000)")
-    .optional(),
-  /** Optional. Application name for OpenRouter. Defaults to MCP_SERVER_NAME or package name. */
-  OPENROUTER_APP_NAME: z.string().optional(),
-  /** Optional. API key for OpenRouter services. */
-  OPENROUTER_API_KEY: z.string().optional(),
-  /** Default LLM model. Default: "google/gemini-2.5-flash-preview-05-20". */
-  LLM_DEFAULT_MODEL: z
-    .string()
-    .default("google/gemini-2.5-flash-preview-05-20"),
-  /** Optional. Default LLM temperature (0.0-2.0). */
-  LLM_DEFAULT_TEMPERATURE: z.coerce.number().min(0).max(2).optional(),
-  /** Optional. Default LLM top_p (0.0-1.0). */
-  LLM_DEFAULT_TOP_P: z.coerce.number().min(0).max(1).optional(),
-  /** Optional. Default LLM max tokens (positive integer). */
-  LLM_DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().optional(),
-  /** Optional. Default LLM top_k (non-negative integer). */
-  LLM_DEFAULT_TOP_K: z.coerce.number().int().nonnegative().optional(),
-  /** Optional. Default LLM min_p (0.0-1.0). */
-  LLM_DEFAULT_MIN_P: z.coerce.number().min(0).max(1).optional(),
+    /** Optional. Application URL for OpenRouter integration. */
+    OPENROUTER_APP_URL: z
+      .string()
+      .url(
+        "OPENROUTER_APP_URL must be a valid URL (e.g., http://localhost:3000)",
+      )
+      .optional(),
+    /** Optional. Application name for OpenRouter. Defaults to MCP_SERVER_NAME or package name. */
+    OPENROUTER_APP_NAME: z.string().optional(),
+    /** Optional. API key for OpenRouter services. */
+    OPENROUTER_API_KEY: z.string().optional(),
+    /** Default LLM model. Default: "google/gemini-2.5-flash-preview-05-20". */
+    LLM_DEFAULT_MODEL: z
+      .string()
+      .default("google/gemini-2.5-flash-preview-05-20"),
+    /** Optional. Default LLM temperature (0.0-2.0). */
+    LLM_DEFAULT_TEMPERATURE: z.coerce.number().min(0).max(2).optional(),
+    /** Optional. Default LLM top_p (0.0-1.0). */
+    LLM_DEFAULT_TOP_P: z.coerce.number().min(0).max(1).optional(),
+    /** Optional. Default LLM max tokens (positive integer). */
+    LLM_DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+    /** Optional. Default LLM top_k (non-negative integer). */
+    LLM_DEFAULT_TOP_K: z.coerce.number().int().nonnegative().optional(),
+    /** Optional. Default LLM min_p (0.0-1.0). */
+    LLM_DEFAULT_MIN_P: z.coerce.number().min(0).max(1).optional(),
 
-  /** Optional. OAuth provider authorization endpoint URL. */
-  OAUTH_PROXY_AUTHORIZATION_URL: z
-    .string()
-    .url("OAUTH_PROXY_AUTHORIZATION_URL must be a valid URL.")
-    .optional(),
-  /** Optional. OAuth provider token endpoint URL. */
-  OAUTH_PROXY_TOKEN_URL: z
-    .string()
-    .url("OAUTH_PROXY_TOKEN_URL must be a valid URL.")
-    .optional(),
-  /** Optional. OAuth provider revocation endpoint URL. */
-  OAUTH_PROXY_REVOCATION_URL: z
-    .string()
-    .url("OAUTH_PROXY_REVOCATION_URL must be a valid URL.")
-    .optional(),
-  /** Optional. OAuth provider issuer URL. */
-  OAUTH_PROXY_ISSUER_URL: z
-    .string()
-    .url("OAUTH_PROXY_ISSUER_URL must be a valid URL.")
-    .optional(),
-  /** Optional. OAuth service documentation URL. */
-  OAUTH_PROXY_SERVICE_DOCUMENTATION_URL: z
-    .string()
-    .url("OAUTH_PROXY_SERVICE_DOCUMENTATION_URL must be a valid URL.")
-    .optional(),
-  /** Optional. Comma-separated default OAuth client redirect URIs. */
-  OAUTH_PROXY_DEFAULT_CLIENT_REDIRECT_URIS: z.string().optional(),
+    /** Optional. OAuth provider authorization endpoint URL. */
+    OAUTH_PROXY_AUTHORIZATION_URL: z
+      .string()
+      .url("OAUTH_PROXY_AUTHORIZATION_URL must be a valid URL.")
+      .optional(),
+    /** Optional. OAuth provider token endpoint URL. */
+    OAUTH_PROXY_TOKEN_URL: z
+      .string()
+      .url("OAUTH_PROXY_TOKEN_URL must be a valid URL.")
+      .optional(),
+    /** Optional. OAuth provider revocation endpoint URL. */
+    OAUTH_PROXY_REVOCATION_URL: z
+      .string()
+      .url("OAUTH_PROXY_REVOCATION_URL must be a valid URL.")
+      .optional(),
+    /** Optional. OAuth provider issuer URL. */
+    OAUTH_PROXY_ISSUER_URL: z
+      .string()
+      .url("OAUTH_PROXY_ISSUER_URL must be a valid URL.")
+      .optional(),
+    /** Optional. OAuth service documentation URL. */
+    OAUTH_PROXY_SERVICE_DOCUMENTATION_URL: z
+      .string()
+      .url("OAUTH_PROXY_SERVICE_DOCUMENTATION_URL must be a valid URL.")
+      .optional(),
+    /** Optional. Comma-separated default OAuth client redirect URIs. */
+    OAUTH_PROXY_DEFAULT_CLIENT_REDIRECT_URIS: z.string().optional(),
 
-  /** Supabase Project URL. From `SUPABASE_URL`. */
-  SUPABASE_URL: z.string().url("SUPABASE_URL must be a valid URL.").optional(),
-  /** Supabase Anon Key (public). From `SUPABASE_ANON_KEY`. */
-  SUPABASE_ANON_KEY: z.string().optional(),
-  /** Supabase Service Role Key (secret). From `SUPABASE_SERVICE_ROLE_KEY`. */
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-}).refine(
-  (env) => {
-    // If auth mode is 'jwt' and environment is 'production', the secret key is required.
-    if (env.NODE_ENV === 'production' && env.MCP_AUTH_MODE === 'jwt') {
-      return typeof env.MCP_AUTH_SECRET_KEY === 'string' && env.MCP_AUTH_SECRET_KEY.length >= 32;
-    }
-    // For other modes or environments, this check doesn't apply.
-    return true;
-  },
-  {
-    message: "MCP_AUTH_SECRET_KEY (min 32 chars) is required when NODE_ENV is 'production' and MCP_AUTH_MODE is 'jwt'.",
-    path: ['MCP_AUTH_SECRET_KEY'], // Specify the path of the error
-  }
-);
+    /** Supabase Project URL. From `SUPABASE_URL`. */
+    SUPABASE_URL: z
+      .string()
+      .url("SUPABASE_URL must be a valid URL.")
+      .optional(),
+    /** Supabase Anon Key (public). From `SUPABASE_ANON_KEY`. */
+    SUPABASE_ANON_KEY: z.string().optional(),
+    /** Supabase Service Role Key (secret). From `SUPABASE_SERVICE_ROLE_KEY`. */
+    SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  })
+  .refine(
+    (env) => {
+      // If auth mode is 'jwt' and environment is 'production', the secret key is required.
+      if (env.NODE_ENV === "production" && env.MCP_AUTH_MODE === "jwt") {
+        return (
+          typeof env.MCP_AUTH_SECRET_KEY === "string" &&
+          env.MCP_AUTH_SECRET_KEY.length >= 32
+        );
+      }
+      // For other modes or environments, this check doesn't apply.
+      return true;
+    },
+    {
+      message:
+        "MCP_AUTH_SECRET_KEY (min 32 chars) is required when NODE_ENV is 'production' and MCP_AUTH_MODE is 'jwt'.",
+      path: ["MCP_AUTH_SECRET_KEY"], // Specify the path of the error
+    },
+  );
 
 const parsedEnv = EnvSchema.safeParse(process.env);
 

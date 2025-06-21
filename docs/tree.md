@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2025-06-13 13:10:07
+Generated on: 2025-06-21 07:33:17
 
 ```
 workflows-mcp-server
@@ -23,21 +23,35 @@ workflows-mcp-server
 │   │   └── index.ts
 │   ├── mcp-server
 │   │   ├── tools
+│   │   │   ├── workflowCreator
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
 │   │   │   ├── workflowInstructionsGetter
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   └── workflowLister
+│   │   │   ├── workflowLister
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   └── workflowTemporaryCreator
 │   │   │       ├── index.ts
 │   │   │       ├── logic.ts
 │   │   │       └── registration.ts
 │   │   ├── transports
-│   │   │   ├── authentication
-│   │   │   │   ├── authContext.ts
-│   │   │   │   ├── authMiddleware.ts
-│   │   │   │   ├── authUtils.ts
-│   │   │   │   ├── oauthMiddleware.ts
-│   │   │   │   └── types.ts
+│   │   │   ├── auth
+│   │   │   │   ├── core
+│   │   │   │   │   ├── authContext.ts
+│   │   │   │   │   ├── authTypes.ts
+│   │   │   │   │   └── authUtils.ts
+│   │   │   │   ├── strategies
+│   │   │   │   │   ├── jwt
+│   │   │   │   │   │   └── jwtMiddleware.ts
+│   │   │   │   │   └── oauth
+│   │   │   │   │       └── oauthMiddleware.ts
+│   │   │   │   └── index.ts
+│   │   │   ├── httpErrorHandler.ts
 │   │   │   ├── httpTransport.ts
 │   │   │   └── stdioTransport.ts
 │   │   ├── README.md
@@ -79,8 +93,16 @@ workflows-mcp-server
 │   │   │   └── github-issue-to-branch-workflow.yaml
 │   │   ├── research_operations
 │   │   │   └── pubmed-research-workflow.yaml
+│   │   ├── research-operations
+│   │   │   └── iterative-research-and-report-generation-workflow.yaml
+│   │   ├── research-visualization
+│   │   │   └── pubmed-research-with-cosmograph-visualization-workflow.yaml
+│   │   ├── testing
+│   │   │   ├── final-response-test-workflow-workflow.yaml
+│   │   │   └── permanent-overwrite-test-workflow.yaml
 │   │   └── web_operations
 │   │       └── website-scraper-workflow.yaml
+│   ├── temp
 │   ├── _index.json
 │   └── global_instructions.md
 ├── .clinerules

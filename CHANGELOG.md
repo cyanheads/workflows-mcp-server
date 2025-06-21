@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2025-06-21
+
+### Added
+
+- **Temporary Workflow Creator**: Introduced `workflow_create_temporary` tool to create workflows that are callable by name but not listed in the main index, useful for complex, multi-step tasks. Useful for allowing an agent to collect its thoughts and create a structured plan of tools and actions it needs to take; or for creating temporary workflows callable by name, which can be passed onto other agents in multi-agent orchestrated systems.
+- **HTTP Error Handler**: Implemented a centralized `httpErrorHandler` to standardize error responses for the HTTP transport.
+
+### Changed
+
+- **Authentication Refactor**: Refactored the authentication middleware into a modular structure with strategies for JWT and OAuth, improving separation of concerns.
+- **Workflow Creator Tool**: The `workflow_create_new` tool now checks for existing files to prevent accidental overwrites and returns the created YAML content in its response.
+- **Dependencies**: Updated dependencies to their latest versions.
+
+### Removed
+
+- **Old Authentication Files**: Deleted the previous monolithic authentication files in favor of the new modular structure.
+
 ## [1.0.3] - 2025-06-14
 
 ### Added

@@ -150,6 +150,265 @@
     "filePath": "categories/github_operations/github-issue-to-branch-workflow.yaml"
   },
   {
+    "name": "Iterative Research and Report Generation",
+    "version": "1.0.0",
+    "description": "A generic workflow that performs iterative research on a given topic using Perplexity and PubMed, writes a detailed research report using docwriter, and compiles it to a PDF. The agent executing this workflow is responsible for synthesizing content for the report sections.",
+    "author": "Cline",
+    "tags": [
+      "research",
+      "reporting",
+      "pdf",
+      "pubmed",
+      "perplexity",
+      "docwriter"
+    ],
+    "steps": [
+      {
+        "server": "perplexity-mcp-server",
+        "tool": "perplexity_search",
+        "action": "Initial Research",
+        "description": "Perform an initial search on the research topic to get a broad overview and identify key concepts and sub-topics. The output serves as the foundation for the report's introduction.",
+        "params": {
+          "query": "{{researchTopic}}"
+        }
+      },
+      {
+        "server": "pubmed-mcp-server",
+        "tool": "search_pubmed_articles",
+        "action": "Gather Scientific Literature",
+        "description": "Search PubMed for scientific articles related to the research topic to gather evidence, data, and citations.",
+        "params": {
+          "queryTerm": "{{researchTopic}}",
+          "maxResults": 20,
+          "fetchBriefSummaries": 10
+        }
+      },
+      {
+        "server": "docwriter-mcp-server",
+        "tool": "docwriter_create_latex_document",
+        "action": "Create Report Draft",
+        "description": "Create a new research report document using the 'research_report' template. The agent should use the research topic to generate a suitable title and a unique documentId.",
+        "params": {
+          "title": "Research Report: {{researchTopic}}",
+          "author": "{{author}}",
+          "filename": "{{documentId}}",
+          "template": "research_report"
+        }
+      },
+      {
+        "server": "docwriter-mcp-server",
+        "tool": "docwriter_update_document_block",
+        "action": "Populate Report Sections",
+        "description": "Synthesize the information gathered from Perplexity and PubMed to populate all sections of the research report. The agent is responsible for generating the content for each block based on the research findings.",
+        "params": {
+          "documentId": "{{documentId}}",
+          "blocks": [
+            {
+              "blockName": "abstract",
+              "content": "{{abstractContent}}"
+            },
+            {
+              "blockName": "introduction",
+              "content": "{{introductionContent}}"
+            },
+            {
+              "blockName": "methodology",
+              "content": "{{methodologyContent}}"
+            },
+            {
+              "blockName": "results",
+              "content": "{{resultsContent}}"
+            },
+            {
+              "blockName": "discussion",
+              "content": "{{discussionContent}}"
+            },
+            {
+              "blockName": "conclusion",
+              "content": "{{conclusionContent}}"
+            }
+          ]
+        }
+      },
+      {
+        "server": "docwriter-mcp-server",
+        "tool": "docwriter_compile_latex_to_pdf",
+        "action": "Compile Final Report",
+        "description": "Compile the final LaTeX document into a PDF, completing the research and reporting cycle. The resulting PDF will be located in the docwriter's data directory.",
+        "params": {
+          "documentId": "{{documentId}}"
+        }
+      }
+    ],
+    "created_date": "2025-06-19",
+    "last_updated_date": "2025-06-19",
+    "category": "Research Operations",
+    "filePath": "categories/research-operations/iterative-research-and-report-generation-workflow.yaml"
+  },
+  {
+    "name": "Dynamic PubMed Research & Visualization Synthesis",
+    "version": "4.0.0",
+    "description": "An advanced, adaptive workflow for executing sophisticated PubMed research and synthesizing findings into a real-time, interactive knowledge graph. This version emphasizes a structured, iterative research loop, data enrichment, and strategic analysis to build a deeply contextualized visual landscape of the literature.",
+    "author": "cyanheads",
+    "tags": [
+      "pubmed",
+      "cosmograph",
+      "dynamic-research",
+      "knowledge-graph",
+      "synthesis",
+      "iterative"
+    ],
+    "steps": [
+      {
+        "server": "cosmograph-mcp-server",
+        "tool": "cosmograph_start_session",
+        "action": "Phase 1: Initialize Visualization Environment",
+        "description": "Bootstrap the visualization environment. This creates the interactive canvas for real-time synthesis of research data. The session must remain active throughout the workflow.",
+        "params": {
+          "openInBrowser": true
+        }
+      },
+      {
+        "server": "pubmed-mcp-server",
+        "tool": "pubmed_research_agent",
+        "action": "Phase 2: Formulate Strategic Research Blueprint",
+        "description": "Architect the investigation. This is a critical strategic phase. Define a precise research goal and a set of initial, high-signal keywords. This blueprint is your mission brief; expect to deviate based on findings.",
+        "params": {
+          "project_title_suggestion": "Dynamic Synthesis of the [Your Topic] Literature",
+          "primary_research_goal": "To construct a comprehensive knowledge graph illustrating the primary intellectual clusters, key influencers (articles/authors), and thematic evolution within the [Your Research Domain] literature.",
+          "research_keywords": [
+            "core-concept-1",
+            "related-concept-2",
+            "key-methodology-or-disease"
+          ],
+          "p1_specific_research_question": "What is the semantic structure of the conversation happening in the literature around [Your Topic]?",
+          "p1_pubmed_search_strategy_description": "Employ an iterative, multi-pronged search strategy. Begin with defined keywords, then dynamically expand the search space using citation chaining (forwards and backwards) and similarity-based discovery on high-relevance articles."
+        }
+      },
+      {
+        "server": "pubmed-mcp-server",
+        "tool": "search_pubmed_articles",
+        "action": "Phase 3.1: Initial Data Ingress",
+        "description": "Execute the initial foray into the literature based on your blueprint. This is your beachhead. The results from this step are the seed for deeper exploration. Analyze summaries to identify high-signal articles.",
+        "params": {
+          "queryTerm": "Your initial, well-formed PubMed query using boolean logic and MeSH terms",
+          "maxResults": 20,
+          "sortBy": "relevance",
+          "fetchBriefSummaries": 20
+        }
+      },
+      {
+        "server": "pubmed-mcp-server",
+        "tool": "fetch_pubmed_content",
+        "action": "Phase 3.2: Seed Data Enrichment",
+        "description": "Enrich the initial seed articles with detailed information. Fetch abstracts, authors, and publication details to create a rich dataset for the initial graph visualization. This detailed data is crucial for later analysis.",
+        "params": {
+          "pmids": "{{all_PMIDs_from_step_3.1}}",
+          "detailLevel": "abstract_plus",
+          "includeMeshTerms": true
+        }
+      },
+      {
+        "server": "cosmograph-mcp-server",
+        "tool": "cosmograph_create_graph",
+        "action": "Phase 3.3: Synthesize and Render Initial Graph",
+        "description": "Translate the enriched seed data into a visual medium. This creates the foundational layer of your knowledge graph. A central node representing the core research topic is created, and all initial 'seed' articles are linked to it. This establishes the initial thematic landscape. Seed nodes are colored blue.",
+        "params": {
+          "nodes": [
+            {
+              "id": "research_topic",
+              "label": "{{p1_specific_research_question_from_step_2}}",
+              "color": "#E53935",
+              "size": 20
+            },
+            {
+              "id": "{{PMID_from_step_3.2}}",
+              "label": "{{Article_Title_from_step_3.2}}",
+              "color": "#42A5F5"
+            }
+          ],
+          "links": [
+            {
+              "source": "{{PMID_from_step_3.2}}",
+              "target": "research_topic",
+              "label": "seed_article"
+            }
+          ]
+        }
+      },
+      {
+        "server": "pubmed-mcp-server",
+        "tool": "get_pubmed_article_connections",
+        "action": "Phase 4.1 (Loop Start): Iterative Network Expansion",
+        "description": "This is the start of the core research loop. **Your task as the agent is to analyze the current graph and strategically select the next node to expand.** 1.  **Analyze the Graph**: Identify nodes that are highly connected, central to a cluster, or particularly relevant to the core research question. 2.  **Select a Strategy**: Based on your analysis, choose a `relationshipType`. Use 'pubmed_citedin' to find influential papers, 'pubmed_references' to uncover foundational work, or 'pubmed_similar_articles' to broaden thematic clusters. 3.  **Execute**: Call this tool with the prioritized PMID and the chosen relationship type. This step should be repeated to build out the graph iteratively.",
+        "params": {
+          "sourcePmid": "{{a_highly_relevant_PMID_from_the_current_graph}}",
+          "relationshipType": "{{'pubmed_citedin' | 'pubmed_references' | 'pubmed_similar_articles'}}",
+          "maxRelatedResults": 15
+        }
+      },
+      {
+        "server": "pubmed-mcp-server",
+        "tool": "fetch_pubmed_content",
+        "action": "Phase 4.2: Expansion Data Enrichment",
+        "description": "Enrich the newly discovered articles from the expansion. Fetch their full details to ensure every new node added to the graph is information-rich.",
+        "params": {
+          "pmids": "{{all_PMIDs_from_step_4.1}}",
+          "detailLevel": "abstract_plus",
+          "includeMeshTerms": true
+        }
+      },
+      {
+        "server": "cosmograph-mcp-server",
+        "tool": "cosmograph_add_elements",
+        "action": "Phase 4.3: Augment Graph with Expanded Network",
+        "description": "Integrate the enriched findings from the expansion into the visualization. This is where the graph breathes and grows. Each new article is added as a node, and a labeled link is created from the source article, clearly showing the relationship (e.g., 'cited by', 'references', 'similar to'). Use distinct visual cues for each expansion 'hop' to represent the growth of your understanding (e.g., Hop 1 nodes are yellow, Hop 2 are green).",
+        "params": {
+          "nodes": [
+            {
+              "id": "{{Connected_PMID_from_step_4.2}}",
+              "label": "{{Connected_Article_Title_from_step_4.2}}",
+              "color": "#FFEE58"
+            }
+          ],
+          "links": [
+            {
+              "source": "{{sourcePmid_from_step_4.1}}",
+              "target": "{{Connected_PMID_from_step_4.2}}",
+              "label": "{{relationshipType_from_step_4.1}}",
+              "color": "#BDBDBD",
+              "width": 2
+            }
+          ]
+        }
+      },
+      {
+        "server": "cosmograph-mcp-server",
+        "tool": "cosmograph_fit_view",
+        "action": "Phase 4.4 (Loop End): Reframe, Analyze, and Decide",
+        "description": "This is the end of one loop iteration. After reframing the view, you must perform a strategic review. **Your task as the agent is to decide the next action:** 1.  **Analyze the new graph structure**: Look for emerging clusters, new central nodes, and gaps in the research landscape. 2.  **Evaluate against the goal**: Does the graph sufficiently answer the research question? 3.  **Decide**:\n    - **CONTINUE**: If more exploration is needed, identify the next set of nodes to prioritize and return to step 4.1.\n    - **CONCLUDE**: If the graph is sufficiently rich or the research goal is met, proceed to the final phase to synthesize your findings for the user.",
+        "params": {}
+      },
+      {
+        "server": "ntfy-mcp-server",
+        "tool": "send_ntfy",
+        "action": "Phase 5: Final Synthesis and Notification",
+        "description": "The iterative research is complete. Your final task is to synthesize the findings from the visual knowledge graph and present them to the user. 1.  **Summarize Key Findings**: Describe the main thematic clusters, identify the most influential papers (based on connectivity), and explain the overall structure of the literature as revealed by the visualization. 2.  **Notify the User**: Send a notification that the research is complete, including a link to the interactive graph and a brief summary of the key insight. 3.  **Present Full Report**: Use `attempt_completion` to provide the detailed summary report.",
+        "params": {
+          "topic": "ATLAS",
+          "title": "PubMed Research Synthesis Complete",
+          "message": "Analysis of '[Your Topic]' is finished. Key clusters identified around [Cluster 1] and [Cluster 2]. Most influential article appears to be PMID [PMID]. View the full interactive graph.",
+          "click": "http://127.0.0.1:5173",
+          "tags": [
+            "bar_chart",
+            "tada"
+          ]
+        }
+      }
+    ],
+    "filePath": "categories/research-visualization/pubmed-research-with-cosmograph-visualization-workflow.yaml"
+  },
+  {
     "name": "Comprehensive PubMed Research and Report Generation",
     "version": "1.0.2",
     "description": "Performs a multi-stage, recursive-style PubMed search to build a comprehensive research report. It identifies top-tier articles, conducts a 'deep dive' to find related works, sets a filesystem context, and generates a polished, structured markdown report. This workflow is ideal for initial discovery and literature review phases.",
@@ -230,6 +489,44 @@
       }
     ],
     "filePath": "categories/research_operations/pubmed-research-workflow.yaml"
+  },
+  {
+    "name": "Final Response Test Workflow",
+    "version": "1.0.0",
+    "description": "A test to verify the new response format.",
+    "author": "Cline",
+    "steps": [
+      {
+        "server": "test-server",
+        "tool": "test-tool",
+        "params": {
+          "message": "Final test"
+        }
+      }
+    ],
+    "created_date": "2025-06-21",
+    "last_updated_date": "2025-06-21",
+    "category": "Testing",
+    "filePath": "categories/testing/final-response-test-workflow-workflow.yaml"
+  },
+  {
+    "name": "Permanent Overwrite Test",
+    "version": "1.0.0",
+    "description": "This should fail now.",
+    "author": "Cline",
+    "steps": [
+      {
+        "server": "test-server",
+        "tool": "test-tool",
+        "params": {
+          "message": "Version 3"
+        }
+      }
+    ],
+    "created_date": "2025-06-21",
+    "last_updated_date": "2025-06-21",
+    "category": "Testing",
+    "filePath": "categories/testing/permanent-overwrite-test-workflow.yaml"
   },
   {
     "name": "Website Content Scraper and Archiver",

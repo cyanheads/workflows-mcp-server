@@ -1,0 +1,63 @@
+name: Iterative Research and Report Generation
+version: 1.0.0
+description: A generic workflow that performs iterative research on a given topic using Perplexity and PubMed, writes a detailed research report using docwriter, and compiles it to a PDF. The agent executing this workflow is responsible for synthesizing content for the report sections.
+author: Cline
+tags:
+  - research
+  - reporting
+  - pdf
+  - pubmed
+  - perplexity
+  - docwriter
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: Initial Research
+    description: Perform an initial search on the research topic to get a broad overview and identify key concepts and sub-topics. The output serves as the foundation for the report's introduction.
+    params:
+      query: '{{researchTopic}}'
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    action: Gather Scientific Literature
+    description: Search PubMed for scientific articles related to the research topic to gather evidence, data, and citations.
+    params:
+      queryTerm: '{{researchTopic}}'
+      maxResults: 20
+      fetchBriefSummaries: 10
+  - server: docwriter-mcp-server
+    tool: docwriter_create_latex_document
+    action: Create Report Draft
+    description: Create a new research report document using the 'research_report' template. The agent should use the research topic to generate a suitable title and a unique documentId.
+    params:
+      title: 'Research Report: {{researchTopic}}'
+      author: '{{author}}'
+      filename: '{{documentId}}'
+      template: research_report
+  - server: docwriter-mcp-server
+    tool: docwriter_update_document_block
+    action: Populate Report Sections
+    description: Synthesize the information gathered from Perplexity and PubMed to populate all sections of the research report. The agent is responsible for generating the content for each block based on the research findings.
+    params:
+      documentId: '{{documentId}}'
+      blocks:
+        - blockName: abstract
+          content: '{{abstractContent}}'
+        - blockName: introduction
+          content: '{{introductionContent}}'
+        - blockName: methodology
+          content: '{{methodologyContent}}'
+        - blockName: results
+          content: '{{resultsContent}}'
+        - blockName: discussion
+          content: '{{discussionContent}}'
+        - blockName: conclusion
+          content: '{{conclusionContent}}'
+  - server: docwriter-mcp-server
+    tool: docwriter_compile_latex_to_pdf
+    action: Compile Final Report
+    description: Compile the final LaTeX document into a PDF, completing the research and reporting cycle. The resulting PDF will be located in the docwriter's data directory.
+    params:
+      documentId: '{{documentId}}'
+created_date: '2025-06-19'
+last_updated_date: '2025-06-19'
+category: Research Operations
