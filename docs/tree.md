@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2025-06-21 07:33:17
+Generated on: 2025-06-21 08:09:03
 
 ```
 workflows-mcp-server
@@ -103,7 +103,6 @@ workflows-mcp-server
 │   │   └── web_operations
 │   │       └── website-scraper-workflow.yaml
 │   ├── temp
-│   ├── _index.json
 │   └── global_instructions.md
 ├── .clinerules
 ├── .dockerignore

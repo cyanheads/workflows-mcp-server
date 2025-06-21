@@ -14,12 +14,12 @@ startCommand:
         description: "HTTP server port (if MCP_TRANSPORT_TYPE is 'http')."
       MCP_LOG_LEVEL:
         type: string
-        default: "info"
+        default: "debug"
         description: "Minimum logging level."
   commandFunction: |
     (config) => ({
-      "command": "node",
-      "args": ["dist/index.js"],
+      "command": "npx",
+      "args": ["workflows-mcp-server"],
       "env": {
         "MCP_TRANSPORT_TYPE": config.MCP_TRANSPORT_TYPE,
         "MCP_HTTP_PORT": config.MCP_HTTP_PORT,
