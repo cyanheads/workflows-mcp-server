@@ -192,3 +192,4 @@ duckdata/
 .claude
 workflows-yaml/temp/
 workflows-yaml/Temporary/
+workflows-yaml/_index.json
