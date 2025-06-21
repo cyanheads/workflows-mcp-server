@@ -17,24 +17,26 @@ Built on the [`cyanheads/mcp-ts-template`](https://github.com/cyanheads/mcp-ts-t
 
 This server equips your AI with specialized tools to interact with the workflow engine:
 
-| Tool Name                                                                         | Description                                              | Key Features                                                                                                                                                                              |
-| :-------------------------------------------------------------------------------- | :------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`workflow_return_list`](./src/mcp-server/tools/workflowLister/)                  | Discovers and lists available workflows.                 | - `category`: Filter by a specific category.<br/>- `tags`: Filter by a list of tags.<br/>- `includeTools`: Optionally include a list of tools used in each workflow.                      |
-| [`workflow_get_instructions`](./src/mcp-server/tools/workflowInstructionsGetter/) | Retrieves the complete definition for a single workflow. | - `name`: The exact name of the workflow.<br/>- `version`: The specific version to retrieve (defaults to latest).<br/>- Dynamically injects global instructions for consistent execution. |
-| [`workflow_create_new`](./src/mcp-server/tools/workflowCreator/)                  | Creates a new, permanent workflow YAML file.             | - Takes a structured JSON object matching the workflow schema.<br/>- Automatically categorizes and re-indexes workflows.                                                                  |
-| [`workflow_create_temporary`](./src/mcp-server/tools/workflowTemporaryCreator/)   | Creates a temporary workflow that is not listed.         | - Ideal for defining multi-step plans for complex tasks.<br/>- Can be passed to other agents by name.                                                                                     |
+| Tool Name                                                                         | Description                                                                 | Key Features                                                                                                                                                                              |
+| :-------------------------------------------------------------------------------- | :-------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`workflow_return_list`](./src/mcp-server/tools/workflowLister/)                  | Discovers and lists available workflows.                                    | - `category`: Filter by a specific category.<br/>- `tags`: Filter by a list of tags.<br/>- `includeTools`: Optionally include a list of tools used in each workflow.                      |
+| [`workflow_get_instructions`](./src/mcp-server/tools/workflowInstructionsGetter/) | Retrieves the complete definition for a single workflow.                    | - `name`: The exact name of the workflow.<br/>- `version`: The specific version to retrieve (defaults to latest).<br/>- Dynamically injects global instructions for consistent execution. |
+| [`workflow_create_new`](./src/mcp-server/tools/workflowCreator/)                  | Creates a new, permanent workflow YAML file.                                | - Takes a structured JSON object matching the workflow schema.<br/>- Automatically categorizes and re-indexes workflows.                                                                  |
+| [`workflow_create_temporary`](./src/mcp-server/tools/workflowTemporaryCreator/)   | Creates a temporary workflow that is not listed, but can be called by name. | - Ideal for defining multi-step plans for complex tasks.<br/>- Can be passed to other agents by name.                                                                                     |
 
 ---
 
 ## Table of Contents
 
-| [Overview](#overview)           | [Features](#features)                   | [Installation](#installation) |
+| [Overview](#overview) | [Features](#features) | [Installation](#installation) |
 | [Configuration](#configuration) | [Project Structure](#project-structure) |
-| [Tools](#tools)                 | [Development](#development)             | [License](#license)           |
+| [Tools](#tools) | [Development](#development) | [License](#license) |
 
 ## Overview
 
-The Workflow MCP Server acts as a powerful orchestration layer, allowing applications (MCP Clients) that understand the Model Context Protocol (MCP) to execute predefined, complex tasks.
+The Workflow MCP Server acts as a powerful orchestration layer that helps your LLM agents manage complex workflows. This provides a structured way to perform 'short' multi-step tasks that would otherwise require hard-coded logic or extensive manual intervention.
+
+It's as easy as telling your LLM "Use the workflows-mcp-server to create a new workflow that does X, Y, and Z, using the current tools you currently have access to" or "Find me a workflow that can help with task A". The server will handle the rest, allowing your agents to focus on higher-level reasoning and decision-making. The temporary workflows can be used to allow your LLM agent to "collect its thoughts" and create a structured temporary plan; even the act of defining a workflow can help the agent clarify its own understanding of the task at hand and improve tool use performance.
 
 Instead of hard-coding multi-step logic, your tools can leverage this server to:
 
