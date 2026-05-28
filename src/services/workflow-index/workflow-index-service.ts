@@ -67,6 +67,23 @@ export function slugify(input: string): string {
 /** Maximum slug length for a name used in a filename (leaves room for version + suffix). */
 const MAX_NAME_SLUG_LENGTH = 200;
 
+/** Throw a tagged error if the slug derived from a workflow name is empty or too long. */
+function assertValidNameSlug(name: string, slug: string): void {
+  if (!slug) {
+    throw Object.assign(new Error(`Workflow name "${name}" produces an empty slug`), {
+      _reason: 'invalid_name',
+    });
+  }
+  if (slug.length > MAX_NAME_SLUG_LENGTH) {
+    throw Object.assign(
+      new Error(
+        `Workflow name is too long — keep it under ${MAX_NAME_SLUG_LENGTH} characters after slugification`,
+      ),
+      { _reason: 'name_too_long' },
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Logging helpers (background/non-request context)
 // ---------------------------------------------------------------------------
@@ -166,20 +183,7 @@ export class WorkflowIndexService {
     const nameSlug = slugify(workflow.name);
     const versionSlug = slugify(workflow.version);
 
-    // Reject if the slugified name would produce an unsafe or empty filename.
-    if (!nameSlug) {
-      throw Object.assign(new Error(`Workflow name "${workflow.name}" produces an empty slug`), {
-        _reason: 'invalid_name',
-      });
-    }
-    if (nameSlug.length > MAX_NAME_SLUG_LENGTH) {
-      throw Object.assign(
-        new Error(
-          `Workflow name is too long — keep it under ${MAX_NAME_SLUG_LENGTH} characters after slugification`,
-        ),
-        { _reason: 'name_too_long' },
-      );
-    }
+    assertValidNameSlug(workflow.name, nameSlug);
 
     const categoryDir = path.join(this.workflowsDir, 'categories', categorySlug);
     // Include version in filename so multiple versions coexist on disk.
@@ -195,7 +199,6 @@ export class WorkflowIndexService {
           _reason: 'already_exists',
         });
       }
-      // Also catch the pre-existing in-memory duplicate (still checked above for fast-path)
       throw err;
     }
 
@@ -210,19 +213,7 @@ export class WorkflowIndexService {
     const nameSlug = slugify(workflow.name);
     const versionSlug = slugify(workflow.version);
 
-    if (!nameSlug) {
-      throw Object.assign(new Error(`Workflow name "${workflow.name}" produces an empty slug`), {
-        _reason: 'invalid_name',
-      });
-    }
-    if (nameSlug.length > MAX_NAME_SLUG_LENGTH) {
-      throw Object.assign(
-        new Error(
-          `Workflow name is too long — keep it under ${MAX_NAME_SLUG_LENGTH} characters after slugification`,
-        ),
-        { _reason: 'name_too_long' },
-      );
-    }
+    assertValidNameSlug(workflow.name, nameSlug);
 
     const tempDir = path.join(this.workflowsDir, 'temp');
     await fs.mkdir(tempDir, { recursive: true });

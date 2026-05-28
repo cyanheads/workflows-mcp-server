@@ -37,8 +37,9 @@ WORKDIR /usr/src/app
 ENV NODE_ENV=production
 
 # OCI image metadata (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
-LABEL org.opencontainers.image.title="workflows-mcp-server"
-LABEL org.opencontainers.image.description=""
+LABEL org.opencontainers.image.title="@cyanheads/workflows-mcp-server"
+LABEL org.opencontainers.image.description="Store, query, and create YAML workflow playbooks for LLM agents via MCP."
+LABEL org.opencontainers.image.source="https://github.com/cyanheads/workflows-mcp-server"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Copy dependency manifests

@@ -1,7 +1,8 @@
 {
-  "name": "workflows-mcp-server",
+  "name": "@cyanheads/workflows-mcp-server",
   "version": "0.1.0",
-  "description": "",
+  "mcpName": "io.github.cyanheads/workflows-mcp-server",
+  "description": "Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,32 +20,62 @@
     "server.json"
   ],
   "scripts": {
-    "build": "tsx scripts/build.ts",
-    "rebuild": "tsx scripts/clean.ts && tsx scripts/build.ts",
-    "clean": "tsx scripts/clean.ts",
-    "devcheck": "tsx scripts/devcheck.ts",
+    "build": "bun run scripts/build.ts",
+    "rebuild": "bun run scripts/clean.ts && bun run build",
+    "clean": "bun run scripts/clean.ts",
+    "devcheck": "bun run scripts/devcheck.ts",
     "audit:refresh": "rm -f bun.lock && bun install && bun audit",
-    "tree": "tsx scripts/tree.ts",
-    "list-skills": "tsx scripts/list-skills.ts",
-    "format": "biome check --write --unsafe .",
-    "lint:mcp": "tsx scripts/lint-mcp.ts",
-    "lint:packaging": "tsx scripts/lint-packaging.ts",
-    "bundle": "npm run build && npx -y @anthropic-ai/mcpb pack . dist/workflows-mcp-server.mcpb",
-    "changelog:build": "tsx scripts/build-changelog.ts",
-    "changelog:check": "tsx scripts/build-changelog.ts --check",
-    "test": "vitest run",
-    "start": "node dist/index.js",
-    "start:stdio": "MCP_TRANSPORT_TYPE=stdio node dist/index.js",
-    "start:http": "MCP_TRANSPORT_TYPE=http node dist/index.js"
+    "tree": "bun run scripts/tree.ts",
+    "list-skills": "bun run scripts/list-skills.ts",
+    "format": "biome check --write --unsafe",
+    "lint:mcp": "bun run scripts/lint-mcp.ts",
+    "lint:packaging": "bun run scripts/lint-packaging.ts",
+    "bundle": "bun run build && npx -y @anthropic-ai/mcpb pack . dist/workflows-mcp-server.mcpb",
+    "changelog:build": "bun run scripts/build-changelog.ts",
+    "changelog:check": "bun run scripts/build-changelog.ts --check",
+    "publish-mcp": "mcp-publisher login github -token \"$(security find-generic-password -a \"$USER\" -s mcp-publisher-github-pat -w)\" && mcp-publisher publish",
+    "test": "bunx vitest run",
+    "start:stdio": "MCP_TRANSPORT_TYPE=stdio bun ./dist/index.js",
+    "start:http": "MCP_TRANSPORT_TYPE=http bun ./dist/index.js"
   },
-  "keywords": ["mcp", "mcp-server", "model-context-protocol"],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai",
+    "llm",
+    "bun",
+    "stdio",
+    "streamable-http",
+    "workflows",
+    "yaml",
+    "playbook",
+    "automation",
+    "agent-tools"
+  ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/cyanheads/workflows-mcp-server.git"
   },
+  "homepage": "https://github.com/cyanheads/workflows-mcp-server#readme",
+  "bugs": {
+    "url": "https://github.com/cyanheads/workflows-mcp-server/issues"
+  },
+  "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/workflows-mcp-server#readme)",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/cyanheads"
+    },
+    {
+      "type": "buy_me_a_coffee",
+      "url": "https://www.buymeacoffee.com/cyanheads"
+    }
+  ],
   "license": "Apache-2.0",
+  "packageManager": "bun@1.3.2",
   "engines": {
-    "bun": ">=1.3.0",
+    "bun": ">=1.3.2",
     "node": ">=24.0.0"
   },
   "publishConfig": {
@@ -61,10 +92,11 @@
     "@biomejs/biome": "^2.4.16",
     "@types/node": "^25.9.1",
     "@types/semver": "^7.7.1",
+    "@vitest/coverage-istanbul": "^4.1.7",
     "depcheck": "^1.4.7",
+    "fast-check": "^4.8.0",
     "ignore": "^7.0.5",
     "tsc-alias": "^1.8.17",
-    "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   }

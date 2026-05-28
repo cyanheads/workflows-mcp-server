@@ -2,18 +2,22 @@
 # OPERATING SYSTEM FILES
 # =============================================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # =============================================================================
 # IDE AND EDITOR FILES
 # =============================================================================
 .idea/
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
 *.swp
 *.swo
 *~
+*.sublime-workspace
+*.sublime-project
 .history/
 
 # =============================================================================
@@ -24,23 +28,106 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.npm
+.pnp.js
+.pnp.cjs
+.pnp.mjs
+.pnp.json
+.pnp.ts
 
 # =============================================================================
-# TYPESCRIPT & BUILD
+# TYPESCRIPT & JAVASCRIPT
 # =============================================================================
-dist/
 *.tsbuildinfo
 .tsbuildinfo
 .tsbuildinfo.scripts
+.tscache/
 *.js.map
+*.mjs.map
+*.cjs.map
 *.d.ts.map
+*.d.ts
+!*.d.ts.template
 *.tgz
+.rollup.cache
 
 # =============================================================================
-# TESTING & COVERAGE
+# PYTHON
 # =============================================================================
-coverage/
-!coverage/coverage-final.json
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+htmlcov/
+.tox/
+.venv
+venv/
+ENV/
+
+# =============================================================================
+# JAVA
+# =============================================================================
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+hs_err_pid*
+target/
+.gradle/
+
+# =============================================================================
+# RUBY
+# =============================================================================
+*.gem
+*.rbc
+/.config
+/InstalledFiles
+/pkg/
+/spec/reports/
+/test/tmp/
+/test/version_tmp/
+/tmp/
+.byebug_history
+
+# =============================================================================
+# BUILD & DISTRIBUTION
+# =============================================================================
+build/
+dist/
+out/
+
+# =============================================================================
+# COMPILED FILES
+# =============================================================================
+*.com
+*.dll
+*.exe
+*.o
+
+# =============================================================================
+# PACKAGE & ARCHIVE FILES
+# =============================================================================
+*.7z
+*.dmg
+*.gz
+*.iso
+*.rar
+*.tar
+*.tar.gz
+*.zip
 
 # =============================================================================
 # LOGS & DATABASES
@@ -51,30 +138,63 @@ coverage/
 logs/
 
 # =============================================================================
+# TESTING & COVERAGE
+# =============================================================================
+.nyc_output/
+coverage/
+!coverage/coverage-final.json
+
+# =============================================================================
 # CACHE & TEMPORARY FILES
 # =============================================================================
 .cache/
 .parcel-cache/
+*.bak
 
 # =============================================================================
 # ENVIRONMENT & CONFIGURATION
 # =============================================================================
 .env
 .env.local
-.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+.sample-env
+!sample.template.*
+mcp-servers.json
+mcp-config.json
 .wrangler
 worker-configuration.d.ts
+
+# =============================================================================
+# GENERATED DOCUMENTATION
+# =============================================================================
+docs/api/
 
 # =============================================================================
 # APPLICATION SPECIFIC
 # =============================================================================
 .storage/
 repomix-output*
+duckdata/
+.claude
 data/
-docs/api/
 docs/devdocs.md
+ideas/
 .mcp.json
-.claude/
-.agents/
+
+# =============================================================================
+# MCP REGISTRY
+# =============================================================================
 .mcpregistry_github_token
 .mcpregistry_registry_token
+.agents
+announcements/
+
+# =============================================================================
+# WORKFLOWS
+# =============================================================================
+# Auto-generated index snapshot — rebuilt at runtime on every index rebuild
+workflows-yaml/_index.json
+# Temporary workflows — ephemeral, created at runtime by workflow_create_temp
+workflows-yaml/temp/*

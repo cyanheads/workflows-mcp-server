@@ -1,6 +1,6 @@
-# Developer Protocol
+# Agent Protocol
 
-**Server:** workflows-mcp-server
+**Server:** @cyanheads/workflows-mcp-server
 **Version:** 0.1.0
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.9.11`
 **Engines:** Bun ≥1.3.0, Node ≥24.0.0
@@ -8,19 +8,6 @@
 **Zod:** ^4.4.3
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
-
----
-
-## First Session
-
-This project was just scaffolded with `bunx @cyanheads/mcp-ts-core init`. The framework, skills, and example definitions are in place — the domain isn't. The user's first messages will set direction; wait for them before proceeding.
-
-> **Remove this section** from CLAUDE.md / AGENTS.md after completing these steps. The skills and conventions below remain — this block is one-time onboarding only.
-
-1. **Get your bearings.** Take stock of the project tree, the skills in `skills/`, and the tools/MCP servers available. Light tool use is fine for context-building — you're mapping the territory, not committing yet.
-2. **Read the framework docs** — `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` (builders, Context, errors, exports, conventions)
-3. **Run the `setup` skill** — read `skills/setup/SKILL.md` and follow its checklist (project orientation, agent protocol file selection, echo definition cleanup, skill sync)
-4. **Design the server** — read `skills/design-mcp-server/SKILL.md` and work through it with the user to map the domain into tools, resources, and services before scaffolding
 
 ---
 
@@ -60,71 +47,33 @@ Tailor suggestions to what's actually missing or stale — don't recite the full
 
 ```ts
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
 
-export const searchItems = tool('search_items', {
-  description: 'Search inventory items by query.',
-  annotations: { readOnlyHint: true },
+export const workflowList = tool('workflow_list', {
+  description: 'List all permanent workflows in the index. Supports optional filtering by category and tags (AND match).',
+  annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   input: z.object({
-    query: z.string().describe('Search terms'),
-    limit: z.number().default(10).describe('Max results'),
+    category: z.string().optional().describe('Filter by category (case-insensitive substring).'),
+    tags: z.array(z.string()).optional().describe('Filter to workflows that have ALL of these tags.'),
+    includeTools: z.boolean().optional().describe('When true, include unique server/tool pairs per workflow.'),
   }),
   output: z.object({
-    items: z.array(z.object({
-      id: z.string().describe('Item ID'),
-      name: z.string().describe('Item name'),
-    })).describe('Matching items'),
+    workflows: z.array(z.object({ name: z.string().describe('Workflow name.'), /* ... */ })).describe('Matching workflows.'),
+    totalCount: z.number().describe('Total number of matching workflows.'),
   }),
-  auth: ['inventory:read'],
-
-  async handler(input, ctx) {
-    const items = await findItems(input.query, input.limit);
-    ctx.log.info('Search completed', { query: input.query, count: items.length });
-    return { items };
-  },
-
-  // format() populates content[] — the markdown twin of structuredContent.
-  // Different clients read different surfaces (Claude Code → structuredContent,
-  // Claude Desktop → content[]); both must carry the same data.
-  // Enforced at lint time: every field in `output` must appear in the rendered text.
-  format: (result) => [{
-    type: 'text',
-    text: result.items.map(i => `**${i.id}**: ${i.name}`).join('\n'),
-  }],
-});
-```
-
-### Resource
-
-```ts
-import { resource, z } from '@cyanheads/mcp-ts-core';
-import { notFound } from '@cyanheads/mcp-ts-core/errors';
-
-export const itemData = resource('inventory://{itemId}', {
-  description: 'Fetch an inventory item by ID.',
-  params: z.object({ itemId: z.string().describe('Item identifier') }),
-  auth: ['inventory:read'],
-  async handler(params, ctx) {
-    const item = await ctx.state.get(`item:${params.itemId}`);
-    if (!item) throw notFound(`Item ${params.itemId} not found`, { itemId: params.itemId });
-    return item;
-  },
-});
-```
-
-### Prompt
-
-```ts
-import { prompt, z } from '@cyanheads/mcp-ts-core';
-
-export const reviewCode = prompt('review_code', {
-  description: 'Review code for issues and best practices.',
-  args: z.object({
-    code: z.string().describe('Code to review'),
-    language: z.string().optional().describe('Programming language'),
-  }),
-  generate: (args) => [
-    { role: 'user', content: { type: 'text', text: `Review this ${args.language ?? ''} code:\n${args.code}` } },
+  errors: [
+    { reason: 'index_unavailable', code: JsonRpcErrorCode.ServiceUnavailable,
+      when: 'The workflow index has not finished building yet.',
+      recovery: 'Retry after the server has finished initializing its workflow index.' },
   ],
+  handler(input, ctx) {
+    const svc = getWorkflowIndexService();
+    if (!svc.ready) throw ctx.fail('index_unavailable', 'Index not ready', ctx.recoveryFor('index_unavailable'));
+    // ... filter and return results
+    return { workflows: [], totalCount: 0 };
+  },
+  format: (result) => [{ type: 'text', text: `**Total:** ${result.totalCount}` }],
 });
 ```
 
@@ -136,21 +85,32 @@ import { z } from '@cyanheads/mcp-ts-core';
 import { parseEnvConfig } from '@cyanheads/mcp-ts-core/config';
 
 const ServerConfigSchema = z.object({
-  apiKey: z.string().describe('External API key'),
-  maxResults: z.coerce.number().default(100),
+  workflowsDir: z
+    .string()
+    .default('./workflows-yaml')
+    .describe('Absolute or relative path to the workflows root directory'),
+  globalInstructionsPath: z
+    .string()
+    .default('')
+    .describe('Path to the global instructions markdown file. Empty string means derive from WORKFLOWS_DIR.'),
+  watcherDebounceMs: z.coerce
+    .number()
+    .default(500)
+    .describe('Milliseconds to debounce filesystem change events before rebuilding the index'),
 });
 
 let _config: z.infer<typeof ServerConfigSchema> | undefined;
 export function getServerConfig() {
   _config ??= parseEnvConfig(ServerConfigSchema, {
-    apiKey: 'MY_API_KEY',
-    maxResults: 'MY_MAX_RESULTS',
+    workflowsDir: 'WORKFLOWS_DIR',
+    globalInstructionsPath: 'GLOBAL_INSTRUCTIONS_PATH',
+    watcherDebounceMs: 'WATCHER_DEBOUNCE_MS',
   });
   return _config;
 }
 ```
 
-`parseEnvConfig` maps Zod schema paths → env var names so errors name the variable (`MY_API_KEY`) not the path (`apiKey`). Throws `ConfigurationError`, which the framework prints as a clean startup banner.
+`parseEnvConfig` maps Zod schema paths → env var names so errors name the variable (`WORKFLOWS_DIR`) not the path (`workflowsDir`). Throws `ConfigurationError`, which the framework prints as a clean startup banner.
 
 ---
 
@@ -161,13 +121,10 @@ Handlers receive a unified `ctx` object. Key properties:
 | Property | Description |
 |:---------|:------------|
 | `ctx.log` | Request-scoped logger — `.debug()`, `.info()`, `.notice()`, `.warning()`, `.error()`. Auto-correlates requestId, traceId, tenantId. |
-| `ctx.state` | Tenant-scoped KV — `.get(key)`, `.set(key, value, { ttl? })`, `.delete(key)`, `.list(prefix, { cursor, limit })`. Accepts any serializable value. |
-| `ctx.elicit` | Ask user for structured input. **Check for presence first:** `if (ctx.elicit) { ... }` |
-| `ctx.sample` | Request LLM completion from the client. **Check for presence first:** `if (ctx.sample) { ... }` |
 | `ctx.signal` | `AbortSignal` for cancellation. |
-| `ctx.progress` | Task progress (present when `task: true`) — `.setTotal(n)`, `.increment()`, `.update(message)`. |
 | `ctx.requestId` | Unique request ID. |
 | `ctx.tenantId` | Tenant ID from JWT or `'default'` for stdio. |
+| `ctx.fail` | Typed error factory for declared error contracts — `ctx.fail('reason', msg, ctx.recoveryFor('reason'))`. |
 
 ---
 
@@ -217,20 +174,25 @@ See framework CLAUDE.md and the `api-errors` skill for the full auto-classificat
 
 ```text
 src/
-  index.ts                              # createApp() entry point
+  index.ts                              # createApp() entry point — registers tools, inits WorkflowIndexService
   config/
-    server-config.ts                    # Server-specific env vars (Zod schema)
+    server-config.ts                    # Server-specific env vars (WORKFLOWS_DIR, GLOBAL_INSTRUCTIONS_PATH, WATCHER_DEBOUNCE_MS)
   services/
-    [domain]/
-      [domain]-service.ts               # Domain service (init/accessor pattern)
-      types.ts                          # Domain types
+    workflow-index/
+      workflow-index-service.ts         # WorkflowIndexService — index build, watcher, semver lookup, write helpers
+      types.ts                          # ParsedWorkflow, WorkflowEntry, WorkflowIndex types
   mcp-server/
     tools/definitions/
-      [tool-name].tool.ts               # Tool definitions
-    resources/definitions/
-      [resource-name].resource.ts       # Resource definitions
-    prompts/definitions/
-      [prompt-name].prompt.ts           # Prompt definitions
+      workflow-list.tool.ts             # workflow_list — list permanent workflows with filters
+      workflow-get.tool.ts              # workflow_get — retrieve full workflow + global instructions
+      workflow-create.tool.ts           # workflow_create — write permanent workflow YAML
+      workflow-create-temp.tool.ts      # workflow_create_temp — write temporary workflow
+      index.ts                          # Barrel export
+workflows-yaml/                         # Workflow library root (configurable via WORKFLOWS_DIR)
+  categories/                           # Permanent workflows organized by category
+  temp/                                 # Temporary workflows (gitignored)
+  global_instructions.md                # Global instructions injected into every workflow_get response
+  _index.json                           # Auto-generated snapshot (gitignored)
 ```
 
 ---
@@ -294,29 +256,27 @@ When you complete a skill's checklist, check the boxes and add a completion time
 
 ## Commands
 
-**Runtime:** Scripts use `tsx` — both `npm run <cmd>` and `bun run <cmd>` work. `bun` is slightly faster for script invocation but not required.
-
 | Command | Purpose |
 |:--------|:--------|
-| `npm run build` | Compile TypeScript |
-| `npm run rebuild` | Clean + build |
-| `npm run clean` | Remove build artifacts |
-| `npm run devcheck` | Lint + format + typecheck + security + changelog sync |
+| `bun run build` | Compile TypeScript |
+| `bun run rebuild` | Clean + build |
+| `bun run clean` | Remove build artifacts |
+| `bun run devcheck` | Lint + format + typecheck + security + changelog sync |
 | `bun run audit:refresh` | Delete `bun.lock`, reinstall, re-audit. Use when `devcheck` flags a transitive advisory — stale lockfile can mask already-patched deps. If advisory survives, it's real. |
-| `npm run tree` | Generate directory structure doc |
-| `npm run format` | Auto-fix formatting |
-| `npm test` | Run tests |
-| `npm run start:stdio` | Production mode (stdio) |
-| `npm run start:http` | Production mode (HTTP) |
-| `npm run changelog:build` | Regenerate `CHANGELOG.md` from `changelog/*.md` |
-| `npm run changelog:check` | Verify `CHANGELOG.md` is in sync (used by devcheck) |
-| `npm run bundle` | Build and pack as `.mcpb` for one-click Claude Desktop install |
+| `bun run tree` | Generate directory structure doc |
+| `bun run format` | Auto-fix formatting |
+| `bun run test` | Run tests |
+| `bun run start:stdio` | Production mode (stdio) |
+| `bun run start:http` | Production mode (HTTP) |
+| `bun run changelog:build` | Regenerate `CHANGELOG.md` from `changelog/*.md` |
+| `bun run changelog:check` | Verify `CHANGELOG.md` is in sync (used by devcheck) |
+| `bun run bundle` | Build and pack as `.mcpb` for one-click Claude Desktop install |
 
 ---
 
 ## Bundling
 
-`npm run bundle` produces a `.mcpb` extension bundle for one-click install in Claude Desktop. MCPB is stdio-only — HTTP and Cloudflare Workers deployments are unaffected. Consumers who don't need it can delete `manifest.json` and `.mcpbignore`; `lint:packaging` skips cleanly.
+`bun run bundle` produces a `.mcpb` extension bundle for one-click install in Claude Desktop. MCPB is stdio-only — HTTP and Cloudflare Workers deployments are unaffected. Consumers who don't need it can delete `manifest.json` and `.mcpbignore`; `lint:packaging` skips cleanly.
 
 **Adding an env var requires both files:** `server.json` (registry discovery, `environmentVariables[]`) and `manifest.json` (bundle install UX, `mcp_config.env` + `user_config`). `lint:packaging` (run by `devcheck`) verifies the env var names match.
 
@@ -359,7 +319,7 @@ The Claude Desktop badge requires the bundle to ship with a stable filename — 
 
 ## Changelog
 
-Directory-based, grouped by minor series via the `.x` semver-wildcard convention. Source of truth: `changelog/<major.minor>.x/<version>.md` (e.g. `changelog/0.1.x/0.1.0.md`) — one file per release, shipped in the npm package. At release, author the per-version file with a concrete version and date, then run `npm run changelog:build` to regenerate the rollup. `changelog/template.md` is a **pristine format reference** — never edited or moved; read it for the frontmatter + section layout when scaffolding. `CHANGELOG.md` is a **navigation index** (header + link + summary per version), regenerated by `npm run changelog:build` — devcheck hard-fails on drift; never hand-edit it.
+Directory-based, grouped by minor series via the `.x` semver-wildcard convention. Source of truth: `changelog/<major.minor>.x/<version>.md` (e.g. `changelog/0.1.x/0.1.0.md`) — one file per release, shipped in the npm package. At release, author the per-version file with a concrete version and date, then run `bun run changelog:build` to regenerate the rollup. `changelog/template.md` is a **pristine format reference** — never edited or moved; read it for the frontmatter + section layout when scaffolding. `CHANGELOG.md` is a **navigation index** (header + link + summary per version), regenerated by `bun run changelog:build` — devcheck hard-fails on drift; never hand-edit it.
 
 Each per-version file opens with YAML frontmatter:
 
@@ -413,4 +373,4 @@ import { getMyService } from '@/services/my-domain/my-service.js';
 - [ ] `.codex-plugin/plugin.json` populated — `name`, `version`, `description`, `repository`, `license` from `package.json`; `interface.displayName` = package name; `interface.shortDescription` from `package.json` description
 - [ ] `.codex-plugin/mcp.json` updated — server name key matches `package.json` name; env vars added for any required API keys
 - [ ] `.claude-plugin/plugin.json` populated — `name`, `version`, `description`, `repository`, `license` from `package.json`; inline `mcpServers` entry with server name key, env vars for any required API keys
-- [ ] `npm run devcheck` passes
+- [ ] `bun run devcheck` passes

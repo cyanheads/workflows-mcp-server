@@ -1,31 +1,45 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.cyanheads/workflows-mcp-server",
-  "description": "LLM agent workflow library: store and query YAML playbooks, execute them via the agent's own tools.",
+  "description": "Store, query, and create YAML workflow playbooks for LLM agents.",
   "repository": {
     "url": "https://github.com/cyanheads/workflows-mcp-server",
     "source": "github"
   },
   "version": "0.1.0",
-  "remotes": [],
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "workflows-mcp-server",
-      "runtimeHint": "node",
+      "identifier": "@cyanheads/workflows-mcp-server",
+      "runtimeHint": "bun",
       "version": "0.1.0",
       "packageArguments": [
-        {
-          "type": "positional",
-          "value": "run"
-        },
-        {
-          "type": "positional",
-          "value": "start:stdio"
-        }
+        { "type": "positional", "value": "run" },
+        { "type": "positional", "value": "start:stdio" }
       ],
       "environmentVariables": [
+        {
+          "name": "WORKFLOWS_DIR",
+          "description": "Absolute or relative path to the workflows root directory.",
+          "format": "string",
+          "isRequired": false,
+          "default": "./workflows-yaml"
+        },
+        {
+          "name": "GLOBAL_INSTRUCTIONS_PATH",
+          "description": "Path to the global instructions markdown file. Derives from WORKFLOWS_DIR when not set.",
+          "format": "string",
+          "isRequired": false,
+          "default": ""
+        },
+        {
+          "name": "WATCHER_DEBOUNCE_MS",
+          "description": "Milliseconds to debounce filesystem change events before rebuilding the index.",
+          "format": "string",
+          "isRequired": false,
+          "default": "500"
+        },
         {
           "name": "MCP_LOG_LEVEL",
           "description": "Sets the minimum log level for output (e.g., 'debug', 'info', 'warn').",
@@ -41,20 +55,35 @@
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "workflows-mcp-server",
-      "runtimeHint": "node",
+      "identifier": "@cyanheads/workflows-mcp-server",
+      "runtimeHint": "bun",
       "version": "0.1.0",
       "packageArguments": [
-        {
-          "type": "positional",
-          "value": "run"
-        },
-        {
-          "type": "positional",
-          "value": "start:http"
-        }
+        { "type": "positional", "value": "run" },
+        { "type": "positional", "value": "start:http" }
       ],
       "environmentVariables": [
+        {
+          "name": "WORKFLOWS_DIR",
+          "description": "Absolute or relative path to the workflows root directory.",
+          "format": "string",
+          "isRequired": false,
+          "default": "./workflows-yaml"
+        },
+        {
+          "name": "GLOBAL_INSTRUCTIONS_PATH",
+          "description": "Path to the global instructions markdown file. Derives from WORKFLOWS_DIR when not set.",
+          "format": "string",
+          "isRequired": false,
+          "default": ""
+        },
+        {
+          "name": "WATCHER_DEBOUNCE_MS",
+          "description": "Milliseconds to debounce filesystem change events before rebuilding the index.",
+          "format": "string",
+          "isRequired": false,
+          "default": "500"
+        },
         {
           "name": "MCP_HTTP_HOST",
           "description": "The hostname for the HTTP server.",
