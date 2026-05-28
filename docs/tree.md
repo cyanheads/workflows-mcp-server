@@ -1,10 +1,9 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2026-05-28 09:46:49
+Generated on: 2026-05-28 10:01:10
 
 ```text
 workflows-mcp-server/
-├── .claude/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── .codex-plugin/
