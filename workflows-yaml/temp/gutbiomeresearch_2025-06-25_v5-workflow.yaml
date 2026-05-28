@@ -1,0 +1,45 @@
+name: GutBiomeResearch_2025-06-25_v5
+version: 1.0.0
+description: A temporary workflow to research the gut microbiome's impact on human health, synthesize findings, and prepare a report. Version 5.
+author: Cline
+category: Temporary
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Perform a broad search to identify the main pillars of current gut biome research.
+    params:
+      query: latest research on the gut microbiome and its systemic effects on the human body
+      return_related_questions: true
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search for recent review articles on the gut-brain axis.
+    params:
+      queryTerm: gut-brain axis review
+      maxResults: 5
+      fetchBriefSummaries: 3
+      filterByPublicationTypes:
+        - Review
+        - Systematic Review
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search for recent review articles on the gut microbiome's role in the immune system.
+    params:
+      queryTerm: gut microbiome immune system modulation review
+      maxResults: 5
+      fetchBriefSummaries: 3
+      filterByPublicationTypes:
+        - Review
+        - Systematic Review
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search for recent review articles on the gut microbiome's impact on metabolic health.
+    params:
+      queryTerm: gut microbiome metabolic health review
+      maxResults: 5
+      fetchBriefSummaries: 3
+      filterByPublicationTypes:
+        - Review
+        - Systematic Review
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'

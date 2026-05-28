@@ -1,0 +1,18 @@
+name: Vastmind-Phase0-Detailed
+version: 1.0.0
+description: 'Phase 0: Initializes the project by reviewing the detailed plan for Phase 1.'
+author: Cline
+tags:
+  - initialization
+  - planning
+  - vastmind
+steps:
+  - server: workflows-mcp-server
+    tool: workflow_get_instructions
+    action: get_instructions
+    description: Retrieve the detailed workflow for Phase 1 to understand the initial scaffolding steps.
+    params:
+      name: Vastmind-Phase1-Detailed
+created_date: '2025-07-10'
+last_updated_date: '2025-07-10'
+category: Project Vastmind

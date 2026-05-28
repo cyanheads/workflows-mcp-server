@@ -1,0 +1,30 @@
+name: Monitor Huawei and Nvidia Patents on Justia
+version: 1.0.0
+description: Periodically scrapes the Justia Patents portfolios for Huawei and Nvidia to monitor for new patent filings.
+author: Cline
+tags:
+  - patent
+  - monitoring
+  - huawei
+  - nvidia
+  - justia
+steps:
+  - server: firecrawl-mcp-server
+    tool: firecrawl_scrape
+    action: Scrape Huawei's Justia Patents page
+    params:
+      url: https://patents.justia.com/assignee/huawei-technologies-co-ltd
+      formats:
+        - markdown
+      onlyMainContent: true
+  - server: firecrawl-mcp-server
+    tool: firecrawl_scrape
+    action: Scrape Nvidia's Justia Patents page
+    params:
+      url: https://patents.justia.com/assignee/nvidia
+      formats:
+        - markdown
+      onlyMainContent: true
+created_date: '2025-07-13'
+last_updated_date: '2025-07-13'
+category: Technological Velocity & Trajectory

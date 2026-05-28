@@ -1,0 +1,83 @@
+name: Sentinel-Phase3-Detailed
+version: 2.0.0
+description: Analyzes Huawei's progress toward technological self-sufficiency by mapping its proprietary technology stack and cross-referencing it with procurement data to identify real-world adoption, using the mandated batch ingestion protocol.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - Technology-Adoption
+  - Self-Sufficiency
+  - Atlas
+  - Huawei
+  - Batch-Processing
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: 'Step 3.1: Proprietary Technology Mapping'
+    description: Researches and creates a canonical list of Huawei's key proprietary technologies (Ascend, Kunpeng, Kirin, GaussDB, EulerOS, HarmonyOS, MetaERP, Pangu).
+    params:
+      query: '[Iterate through queries like: ''Huawei proprietary technology stack'', ''Huawei Ascend 910B specifications'', ''Huawei GaussDB vs Oracle'']'
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: 'Step 3.1: Graph Ingestion - Technology Nodes'
+    description: Ingests all identified proprietary technologies as 'Technology' nodes in a single, batched call.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all new Technology nodes]'
+  - server: atlas-mcp-server
+    tool: atlas_query_canvas
+    action: 'Step 3.2: Integration Analysis via Cross-Reference'
+    description: Queries all procurement contracts to find mentions of the proprietary technologies, returning a list of contracts where Huawei is embedding its own stack.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      queryDefinition:
+        nodes:
+          nodeType: ProcurementContract
+          content:
+            - key: summary
+              value: GaussDB
+              operator: IN
+            - key: summary
+              value: OceanStor
+              operator: IN
+            - key: summary
+              value: EulerOS
+              operator: IN
+            - key: summary
+              value: Ascend
+              operator: IN
+            - key: summary
+              value: Kunpeng
+              operator: IN
+            - key: summary
+              value: Kirin
+              operator: IN
+            - key: summary
+              value: HarmonyOS
+              operator: IN
+            - key: summary
+              value: MetaERP
+              operator: IN
+            - key: summary
+              value: Pangu
+              operator: IN
+  - server: agent-native
+    tool: manual_review_and_aggregate
+    action: 'Step 3.3: Data Aggregation for Graph Ingestion'
+    description: 'An offline step where the agent (you) processes the cross-referencing results. Responsibilities include: 1. **Compiling Edges**: Create a complete list of all ''USES_TECHNOLOGY'' edges to be created. 2. **Preparing Updates**: Prepare a list of all ''ProcurementContract'' nodes that require updates to their ''technology_stack'' property.'
+    params: {}
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: 'Step 3.3: Batched Edge Ingestion'
+    description: Creates all new 'USES_TECHNOLOGY' relationships in a single, batched call, linking contracts to the technologies they deploy.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[Aggregated list of all new USES_TECHNOLOGY edges]'
+  - server: atlas-mcp-server
+    tool: atlas_update_nodes
+    action: 'Step 3.3: Batched Node Enrichment'
+    description: Applies all pending updates to the 'technology_stack' property of 'ProcurementContract' nodes in a single, batched call to ensure data consistency.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all ProcurementContract node updates]'
+created_date: '2025-07-21'
+last_updated_date: '2025-07-21'
+category: Project Sentinel

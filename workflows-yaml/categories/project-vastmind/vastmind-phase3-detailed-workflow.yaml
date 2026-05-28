@@ -1,0 +1,35 @@
+name: Vastmind-Phase3-Detailed
+version: 1.0.0
+description: 'Phase 3: Performs deep enrichment and connection analysis to uncover second and third-order connections and enrich nodes with granular data.'
+author: Cline
+tags:
+  - enrichment
+  - analysis
+  - vastmind
+steps:
+  - server: atlas-mcp-server
+    tool: atlas_query_canvas
+    action: get_node_pairs
+    description: Get all node pairs connected by an edge.
+    params:
+      canvasId: Nvidia-China-Intel
+      queryDefinition:
+        edges: {}
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: analyze_node_pairs
+    description: For each node pair, generate and execute queries to find indirect relationships.
+    params:
+      node_pairs: ${get_node_pairs.result}
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: enrich_nodes
+    description: Enrich company, person, and regulation nodes with specific details.
+    params:
+      queries:
+        - Nvidia key products, CEO, annual revenue, stock ticker
+        - Ren Zhengfei current role, previous employment, education
+        - October 7 2022 BIS rule summary, date published, governing body, source URL
+created_date: '2025-07-10'
+last_updated_date: '2025-07-10'
+category: Project Vastmind

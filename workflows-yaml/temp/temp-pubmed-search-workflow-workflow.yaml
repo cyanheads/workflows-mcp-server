@@ -1,0 +1,16 @@
+name: temp-pubmed-search-workflow
+version: 1.0.0
+description: A temporary workflow to search PubMed for articles about neuroscience.
+author: Cline
+category: Temporary
+steps:
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search PubMed for articles related to neuroscience and fetch summaries.
+    params:
+      queryTerm: neuroscience
+      maxResults: 3
+      fetchBriefSummaries: 3
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'

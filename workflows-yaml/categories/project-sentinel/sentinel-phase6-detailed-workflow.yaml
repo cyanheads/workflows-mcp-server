@@ -1,0 +1,46 @@
+name: Sentinel-Phase6-Detailed
+version: 2.0.0
+description: Maps the deep context of Huawei's global influence by identifying and modeling the human, financial, regulatory, and intellectual property networks using the mandated batch ingestion protocol.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - Influence-Mapping
+  - Human-Networks
+  - Regulatory-Tracking
+  - Atlas
+  - Batch-Processing
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: 'Step 6.1-6.4: Comprehensive Influence Network Research'
+    description: 'Performs iterative, multi-faceted research to gather intelligence on: 1. **Human Networks**: Key executives, board members, researchers. 2. **Financial Links**: Investments, ownership, subsidiaries. 3. **Regulatory Events**: Sanctions, policy changes. 4. **IP & Standards**: Patents and standards body participation.'
+    params:
+      query: '[Iterate through all queries specified in the instructions for Phase 6]'
+  - server: agent-native
+    tool: manual_review_and_aggregate
+    action: 'Step 6.1-6.4: Data Aggregation for Graph Ingestion'
+    description: 'An offline step where the agent processes all research findings. Responsibilities include: 1. **De-duplication**: Ensure all entities (people, patents, etc.) are unique. 2. **Aggregation**: Compile comprehensive lists for all new nodes (''Person'', ''RegulatoryAction'', ''Patent'', ''StandardsBody'') and all new edges (''WORKS_FOR'', ''INVESTED_IN'', ''SUBJECT_TO'', etc.).'
+    params: {}
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: 'Step 6.1-6.4: Batched Node Ingestion'
+    description: Ingests all new, unique nodes discovered during the research phase into the graph in a single, batched call.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all new Person, RegulatoryAction, Patent, and StandardsBody nodes]'
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: 'Step 6.1-6.4: Batched Edge Ingestion'
+    description: Creates all corresponding relationships for the new nodes in a single, batched call, completely modeling the discovered influence networks.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[Aggregated list of all new contextual edges]'
+  - server: atlas-mcp-server
+    tool: atlas_update_edges
+    action: 'Step 6.1-6.4: Bulk Edge Enrichment'
+    description: Applies all pending updates to the content of newly created edges (e.g., stake_percentage for INVESTED_IN edges) in a single, batched call to ensure data consistency.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[Aggregated list of all edge updates with enriched content]'
+created_date: '2025-07-21'
+last_updated_date: '2025-07-21'
+category: Project Sentinel

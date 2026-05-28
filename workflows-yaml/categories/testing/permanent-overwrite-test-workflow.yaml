@@ -1,0 +1,12 @@
+name: Permanent Overwrite Test
+version: 1.0.0
+description: This should fail now.
+author: Cline
+steps:
+  - server: test-server
+    tool: test-tool
+    params:
+      message: Version 3
+created_date: '2025-06-21'
+last_updated_date: '2025-06-21'
+category: Testing

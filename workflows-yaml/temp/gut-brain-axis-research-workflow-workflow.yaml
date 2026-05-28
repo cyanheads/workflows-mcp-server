@@ -1,0 +1,36 @@
+name: Gut-Brain Axis Research Workflow
+version: 1.0.0
+description: A workflow to research the gut-brain axis using Perplexity and PubMed, and summarize the findings.
+author: Cline
+category: Temporary
+tags:
+  - research
+  - gut-biome
+  - neuroscience
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Search for recent, high-impact review articles on the gut-brain axis.
+    params:
+      query: latest review articles on the gut-brain axis and its effect on neurological and mental health
+      search_recency_filter: year
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search PubMed for key review articles to identify primary research themes.
+    params:
+      queryTerm: gut-brain axis microbiome neuroinflammation
+      maxResults: 10
+      sortBy: relevance
+      filterByPublicationTypes:
+        - Review
+        - Systematic Review
+      fetchBriefSummaries: 5
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Synthesize the findings into a detailed summary of the gut-brain axis mechanisms.
+    params:
+      query: Based on the latest research, summarize the mechanisms of the gut-brain axis, including the role of microbial metabolites, the vagus nerve, and the immune system in influencing brain function and behavior.
+      showThinking: true
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'

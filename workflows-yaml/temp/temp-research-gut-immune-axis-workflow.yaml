@@ -1,0 +1,35 @@
+name: temp-research-gut-immune-axis
+version: 1.0.0
+description: A temporary workflow to research the connection between the gut biome and the immune system (autoimmunity, inflammation, etc.).
+author: Cline-Agent
+category: Temporary
+tags:
+  - research
+  - pubmed
+  - perplexity
+  - gut-immune-axis
+steps:
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search for recent, high-impact review articles on the gut-immune axis.
+    params:
+      queryTerm: ("gut-immune axis" OR "gut microbiota" AND ("immune system" OR "autoimmunity" OR "inflammation" OR "immunomodulation"))
+      maxResults: 10
+      sortBy: relevance
+      filterByPublicationTypes:
+        - Review
+        - Systematic Review
+      fetchBriefSummaries: 5
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Perform a broad search to gather context on gut microbiota's role in immune regulation.
+    params:
+      query: How does the gut microbiome regulate the immune system and contribute to autoimmune diseases?
+      return_related_questions: true
+  - server: agent-native
+    tool: synthesize_and_report
+    description: Analyze the search results, identify the top 3-5 most relevant papers, fetch their full abstracts, and synthesize a summary of the key findings, mechanisms, and future research directions. Include all sources.
+    params: {}
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'

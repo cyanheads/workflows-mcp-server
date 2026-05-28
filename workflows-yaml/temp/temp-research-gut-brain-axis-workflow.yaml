@@ -1,0 +1,35 @@
+name: temp-research-gut-brain-axis
+version: 1.0.0
+description: A temporary workflow to research the connection between the gut biome and the brain (neuroscience, mental health, etc.).
+author: Cline-Agent
+category: Temporary
+tags:
+  - research
+  - pubmed
+  - perplexity
+  - gut-brain-axis
+steps:
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search for recent, high-impact review articles on the gut-brain axis.
+    params:
+      queryTerm: ("gut-brain axis" OR "psychobiome" OR "gut microbiota" AND ("mental health" OR "neurodevelopmental disorders" OR "neurodegeneration"))
+      maxResults: 10
+      sortBy: relevance
+      filterByPublicationTypes:
+        - Review
+        - Systematic Review
+      fetchBriefSummaries: 5
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Perform a broad search to gather context and identify key researchers or landmark studies.
+    params:
+      query: latest research on the gut-brain axis and its impact on mental health
+      return_related_questions: true
+  - server: agent-native
+    tool: synthesize_and_report
+    description: Analyze the search results, identify the top 3-5 most relevant papers, fetch their full abstracts, and synthesize a summary of the key findings, mechanisms, and future research directions. Include all sources.
+    params: {}
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'

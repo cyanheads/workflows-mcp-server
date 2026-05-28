@@ -1,0 +1,53 @@
+name: Sentinel-Phase1-Detailed
+version: 2.0.0
+description: Executes a systematic search and ingestion of Huawei's public procurement contracts across key geopolitical regions (NATO, Five Eyes). This workflow identifies how Huawei technology is embedded in government infrastructure, normalizes and validates the data, and models the findings in the Atlas knowledge graph according to the batch ingestion protocol.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - Procurement
+  - Data-Ingestion
+  - Atlas
+  - Huawei
+  - Batch-Processing
+steps:
+  - server: procurements-mcp-server
+    tool: procure_search_contracts
+    action: 'Step 1.1: Systematic Procurement Database Search'
+    description: Performs an iterative, multi-region search for public procurement contracts awarded to Huawei and its known legal entities. This step must be executed for each specified country code to ensure comprehensive coverage. The output is a raw list of contract data requiring further processing.
+    params:
+      countryCode: '[Iterate: ''USA'', ''EU'', ''CHN'']'
+      keywords:
+        - Huawei Technologies
+        - 华为技术有限公司
+        - Huawei Technologies S.L.
+        - Huawei Technologies Deutschland GmbH
+      timePeriod:
+        startDate: '2020-01-01T00:00:00Z'
+        endDate: '[Current Date]'
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: 'Step 1.3: News-Based Discovery and Triangulation'
+    description: Supplements official database searches by using news analysis to uncover contract awards not listed in public databases and to find corroborating details for known contracts. Search results must be manually reviewed to extract key contract details.
+    params:
+      query: '[Iterate through queries like: ''"Huawei government contract" Spain "Interior Ministry"'', ''"Huawei wins" public safety contract Germany'', ''Hungary government buys Huawei cloud services'']'
+  - server: agent-native
+    tool: manual_review_and_normalize
+    action: 'Step 1.2 & 1.4: Data Aggregation, Normalization, and Validation'
+    description: 'A critical offline step where the agent processes all raw data from the previous steps. Responsibilities include: 1. **Currency Conversion**: Convert all local currency values to USD. 2. **De-duplication**: Check for existing contract_ids in Atlas. 3. **Keyword Flagging**: Scan summaries for sensitive terms and set ''is_sensitive: True''. 4. **Aggregation**: Compile all validated data into three master lists: one for new ''GovernmentBody'' nodes, one for new ''ProcurementContract'' nodes, and one for all new edges (''AWARDED_CONTRACT'', ''FULFILLED_BY'').'
+    params: {}
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: 'Step 1.4: Batched Node Ingestion'
+    description: Executes a single, batched tool call to create all new, validated 'GovernmentBody' and 'ProcurementContract' nodes that were aggregated in the previous step. This adheres to the efficiency protocol.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all new GovernmentBody and ProcurementContract nodes]'
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: 'Step 1.4: Batched Edge Ingestion'
+    description: Following the successful creation of all new nodes, this step executes a single, batched tool call to create all corresponding 'AWARDED_CONTRACT' and 'FULFILLED_BY' edges. This ensures all relationships from the aggregated data are codified in the graph.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[Aggregated list of all new AWARDED_CONTRACT and FULFILLED_BY edges]'
+created_date: '2025-07-21'
+last_updated_date: '2025-07-21'
+category: Project Sentinel

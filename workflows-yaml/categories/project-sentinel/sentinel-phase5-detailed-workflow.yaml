@@ -1,0 +1,42 @@
+name: Sentinel-Phase5-Detailed
+version: 2.0.0
+description: Transforms the complex knowledge graph into a digestible intelligence product by programmatically generating narrative summaries for key nodes and exporting the entire graph for interactive ECharts visualization.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - Narrative-Synthesis
+  - Visualization
+  - ECharts
+  - Atlas
+  - Batch-Processing
+steps:
+  - server: agent-native
+    tool: manual_review_and_summarize
+    action: 'Step 5.1: Automated Narrative Enrichment'
+    description: 'An offline step where the agent iterates through high-value nodes (e.g., sensitive contracts), queries their data and connections from Atlas, and uses an LLM to generate a concise narrative summary for each. All generated summaries are aggregated for a batch update.'
+    params:
+      prompt_template: "Act as a strategic intelligence analyst for Nvidia's Government Affairs team. Your task is to synthesize the following structured data into a concise, impactful narrative summary (2-3 sentences). The summary must be factual and directly reference the provided data. **Structured Data:** [Inject structured data from Atlas query here] **Your Narrative Summary:**"
+  - server: atlas-mcp-server
+    tool: atlas_update_nodes
+    action: 'Step 5.1: Batched Narrative Ingestion'
+    description: Executes a single, batched call to write all the generated 'narrative_summary' properties to their corresponding nodes in the Atlas graph.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all node updates with narrative summaries]'
+  - server: atlas-mcp-server
+    tool: atlas_export_canvas_to_echarts
+    action: 'Step 5.2: Export Full Canvas to ECharts Format'
+    description: Exports the entire, enriched Project Sentinel canvas from Atlas into a JSON object specifically formatted for compatibility with the ECharts graph visualization library.
+    params:
+      canvasId: 'Project-Sentinel-Huawei-Ecosystem-v2'
+      nameField: name
+      valueField: value_usd
+  - server: built-in
+    tool: write_to_file
+    action: 'Step 5.3: Save Final ECharts Data File'
+    description: Saves the ECharts-formatted JSON data to a file named 'echarts-huawei-data.json', creating the final deliverable for the interactive visualization dashboard.
+    params:
+      path: echarts-huawei-data.json
+      content: '[JSON output from the atlas_export_canvas_to_echarts tool]'
+created_date: '2025-07-21'
+last_updated_date: '2025-07-21'
+category: Project Sentinel

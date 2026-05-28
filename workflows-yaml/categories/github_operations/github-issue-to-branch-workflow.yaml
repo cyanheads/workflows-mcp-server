@@ -1,0 +1,45 @@
+name: "GitHub Issue to Branch Workflow"
+version: "1.0.0"
+description: "Creates a new Git branch from a GitHub issue. It fetches the issue title to generate a descriptive branch name, and then checks out the new branch."
+author: "DevOps Team"
+created_date: "2025-06-13"
+last_updated_date: "2025-06-13"
+category: "GitHub Operations"
+tags:
+  - "git"
+  - "github"
+  - "branch"
+  - "issue"
+steps:
+  - server: "git-mcp-server"
+    tool: "git_set_working_dir"
+    action: "set_directory"
+    params:
+      path: "{{input.repository_path}}"
+      validateGitRepo: true
+    description: "Set the session's working directory to the target Git repository."
+
+  - server: "github-mcp-server"
+    tool: "get_issue"
+    action: "get_issue_details"
+    params:
+      owner: "{{input.owner}}"
+      repo: "{{input.repo}}"
+      issue_number: "{{input.issue_number}}"
+    description: "Fetch the details of the specified GitHub issue."
+
+  - server: "git-mcp-server"
+    tool: "git_branch"
+    action: "create_branch_from_issue"
+    params:
+      mode: "create"
+      branchName: "feature/issue-{{steps.get_issue_details.output.number}}-{{steps.get_issue_details.output.title | slugify}}"
+      startPoint: "main"
+    description: "Create a new branch with a name derived from the issue number and title."
+
+  - server: "git-mcp-server"
+    tool: "git_checkout"
+    action: "checkout_new_branch"
+    params:
+      branchOrPath: "feature/issue-{{steps.get_issue_details.output.number}}-{{steps.get_issue_details.output.title | slugify}}"
+    description: "Switch to the newly created branch."

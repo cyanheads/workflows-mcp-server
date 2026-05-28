@@ -1,0 +1,38 @@
+name: Vastmind-Phase4-Detailed
+version: 1.0.0
+description: 'Phase 4: Finalizes the project by validating the knowledge graph, exporting the data, and generating the final ECharts visualization.'
+author: Cline
+tags:
+  - export
+  - visualization
+  - vastmind
+steps:
+  - server: atlas-mcp-server
+    tool: atlas_query_canvas
+    action: validate_graph
+    description: Perform a final validation of the Atlas graph.
+    params:
+      canvasId: Nvidia-China-Intel
+      queryDefinition: {}
+  - server: atlas-mcp-server
+    tool: atlas_export_canvas_to_echarts
+    action: export_to_echarts
+    description: Export the Atlas canvas to an ECharts-compatible JSON format.
+    params:
+      canvasId: Nvidia-China-Intel
+  - server: local
+    tool: write_to_file
+    action: save_echarts_data
+    description: Save the generated ECharts data to a file.
+    params:
+      path: /Users/casey/Developer/nv-demo/data/echarts-data.json
+      content: ${export_to_echarts.result}
+  - server: echarts-mcp-server
+    tool: echarts_render_interactive_chart
+    action: render_visualization
+    description: Generate the final interactive ECharts visualization.
+    params:
+      dataPath: /Users/casey/Developer/nv-demo/data/echarts-data.json
+created_date: '2025-07-10'
+last_updated_date: '2025-07-10'
+category: Project Vastmind

@@ -1,0 +1,36 @@
+name: Gut-Metabolism Axis Research Workflow
+version: 1.0.0
+description: A workflow to research the gut-metabolism axis, focusing on the microbiome's influence on metabolic diseases like obesity and type 2 diabetes.
+author: Cline
+category: Temporary
+tags:
+  - research
+  - gut-biome
+  - metabolism
+  - endocrinology
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Find recent review articles on the gut-metabolism axis.
+    params:
+      query: comprehensive reviews on the gut microbiome's impact on host metabolism and metabolic syndrome
+      search_recency_filter: year
+  - server: pubmed-mcp-server
+    tool: search_pubmed_articles
+    description: Search PubMed for key literature on the microbiome's role in metabolic health.
+    params:
+      queryTerm: gut microbiome metabolism obesity type 2 diabetes
+      maxResults: 10
+      sortBy: relevance
+      filterByPublicationTypes:
+        - Review
+      fetchBriefSummaries: 5
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: Synthesize findings on the microbiome's role in metabolic disease.
+    params:
+      query: Summarize the current understanding of how the gut microbiome contributes to metabolic diseases, including its role in energy extraction, inflammation, and the production of signaling molecules.
+      showThinking: true
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'

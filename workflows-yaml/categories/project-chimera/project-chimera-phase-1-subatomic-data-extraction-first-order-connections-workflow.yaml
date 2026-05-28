@@ -1,0 +1,71 @@
+name: 'Project Chimera - Phase 1: Subatomic Data Extraction & First-Order Connections'
+version: 1.0.0
+description: To decompose known entities into their constituent data points and map all direct, explicit relationships. This is a breadth-first expansion.
+author: Cline
+tags:
+  - atlas
+  - firecrawl
+  - data extraction
+  - connections
+steps:
+  - server: firecrawl-mcp-server
+    tool: firecrawl_scrape
+    action: scrape
+    description: Use firecrawl_scrape with custom extract schemas on DataSource URLs to pull structured data.
+    params:
+      url: Placeholder for direct data URL (e.g., annual report PDF, patent page)
+      extract:
+        schema: {}
+        prompt: Extract all relevant structured data from this document, such as directors, patent details, or profile information.
+  - server: firecrawl-mcp-server
+    tool: firecrawl_crawl
+    action: crawl
+    description: Recursively crawl domains of interest to discover new documents and entities, with appropriate path filtering.
+    params:
+      url: Placeholder for domain URL (e.g., university research department, partner company newsroom)
+      maxDepth: 2
+      includePaths:
+        - Placeholder for specific data types or sections, e.g., /patents/, /publications/
+      excludePaths:
+        - Placeholder for irrelevant content, e.g., /about/, /contact/
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: create_nodes
+    description: Create new, specific nodes in Atlas for every new, discrete piece of information, citing sources.
+    params:
+      canvasId: Project Chimera
+      nodes:
+        - nodeType: Filing
+          content:
+            details: Placeholder for filing details
+            source_url: Placeholder for source URL
+        - nodeType: Officer
+          content:
+            name: Placeholder for officer name
+            source_url: Placeholder for source URL
+        - nodeType: LawFirm
+          content:
+            name: Placeholder for law firm name
+            source_url: Placeholder for source URL
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: create_edges
+    description: Meticulously link new nodes with explicit, verifiable relationships, justified by source documents.
+    params:
+      canvasId: Project Chimera
+      edges:
+        - sourceNodeId: Placeholder for Corporation Node ID
+          targetNodeId: Placeholder for Subsidiary Corporation Node ID
+          edgeType: HAS_SUBSIDIARY
+        - sourceNodeId: Placeholder for Person Node ID
+          targetNodeId: Placeholder for Patent Node ID
+          edgeType: INVENTOR_OF
+        - sourceNodeId: Placeholder for Person Node ID
+          targetNodeId: Placeholder for Publication Node ID
+          edgeType: AUTHOR_OF
+        - sourceNodeId: Placeholder for GovernmentBody Node ID
+          targetNodeId: Placeholder for Corporation Node ID
+          edgeType: AWARDED_CONTRACT
+created_date: '2025-07-13'
+last_updated_date: '2025-07-13'
+category: Project Chimera

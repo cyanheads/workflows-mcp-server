@@ -1,0 +1,93 @@
+name: Vastmind-Phase2-Detailed
+version: 1.0.0
+description: 'Phase 2: Expands the knowledge graph by gathering broad intelligence across key domains and mapping primary connections.'
+author: Cline
+tags:
+  - intelligence-gathering
+  - connections
+  - vastmind
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: expand_graph
+    description: Expand graph with financial data.
+    params:
+      queries:
+        - Who are the top 5 investors in SMIC?
+        - List subsidiaries of Huawei.
+        - What was Tencent's 2023 revenue from AI services?
+        - Recent funding rounds for Chinese AI chip startups.
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: expand_graph
+    description: Expand graph with regulatory and export control data.
+    params:
+      queries:
+        - US BIS Entity List additions 2019
+        - US export controls on AI chips timeline
+        - CHIPS and Science Act details
+        - October 7 2022 BIS rule summary
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: expand_graph
+    description: Expand graph with legal and patent litigation data.
+    params:
+      queries:
+        - Huawei patent litigation US
+        - SMIC intellectual property disputes
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: expand_graph
+    description: Expand graph with trade, customs, and supply chain data.
+    params:
+      queries:
+        - China semiconductor import export data
+        - Huawei supply chain partners
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: expand_graph
+    description: Expand graph with market news and open-source data.
+    params:
+      queries:
+        - Huawei R&D spending by year
+        - Huawei annual report 2020
+  - server: firecrawl-mcp-server
+    tool: firecrawl_search
+    action: expand_graph
+    description: Expand graph with Chinese market news.
+    params:
+      queries:
+        - 华为 投资 半导体
+  - server: firecrawl-mcp-server
+    tool: firecrawl_search
+    action: expand_graph
+    description: Expand graph with open source project data.
+    params:
+      queries:
+        - Huawei new open source projects after Oct 2022
+      url: github.com
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: deconstruct_supply_chain
+    description: Deconstruct Huawei's Ascend AI chip supply chain.
+    params:
+      queries:
+        - Huawei HiSilicon EDA software
+        - China domestic EDA companies
+        - Empyrean Technology Huawei
+        - Primarius Technology Huawei
+        - SMIC 7nm process node
+        - Huawei Kirin 9000S manufacturer
+        - Hua Hong Semiconductor Huawei
+        - NExchip Huawei
+        - Huawei Ascend 910B packaging
+        - China OSAT leaders
+        - JCET Huawei
+        - Tongfu Microelectronics Huawei
+        - China semiconductor wafer suppliers
+        - National Silicon Industry Group
+        - Naura Technology Group etching equipment
+        - AMEC China
+created_date: '2025-07-10'
+last_updated_date: '2025-07-10'
+category: Project Vastmind

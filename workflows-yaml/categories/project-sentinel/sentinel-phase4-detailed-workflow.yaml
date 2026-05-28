@@ -1,0 +1,42 @@
+name: Sentinel-Phase4-Detailed
+version: 2.0.0
+description: Investigates the strategic linkage between Huawei's government contracts and its AI development (e.g., Pangu models) by identifying data-rich contracts and creating inferential, evidence-based edges in Atlas using the batch ingestion protocol.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - AI-Linkage
+  - State-Data
+  - Pangu-AI
+  - Atlas
+  - Huawei
+  - Batch-Processing
+steps:
+  - server: atlas-mcp-server
+    tool: atlas_query_canvas
+    action: "Step 4.1: Identify Data-Rich and Sensitive Contracts"
+    description: Isolates contracts providing Huawei access to sensitive or large-scale government data by querying for 'ProcurementContract' nodes where 'is_sensitive' is true.
+    params:
+      canvasId: "[Project Sentinel Canvas ID]"
+      queryDefinition:
+        nodes:
+          nodeType: ProcurementContract
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: "Step 4.2: Research Pangu AI Model Applications and Data Sources"
+    description: Researches the goals, applications, and data sources for Huawei's Pangu AI models to identify overlaps with government functions and clients.
+    params:
+      query: "[Iterate through queries like: 'Huawei Pangu AI model training data', 'Pangu-Weather model data sources', 'Huawei Pangu for government services']"
+  - server: agent-native
+    tool: manual_review_and_aggregate
+    action: "Step 4.3: Data Aggregation for Inferential Edges"
+    description: "An offline step where the agent processes all findings. Responsibilities include: 1. **Compiling Edges**: Create a definitive list of all new 'MANAGES_DATA_FOR' and 'POTENTIAL_AI_TRAINING_SOURCE' edges based on the analysis. 2. **Documenting Evidence**: For each edge, record the supporting evidence or justification in its properties."
+    params: {}
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: "Step 4.3: Batched Inferential Edge Ingestion"
+    description: Creates all new, inferential 'MANAGES_DATA_FOR' and 'POTENTIAL_AI_TRAINING_SOURCE' edges in a single, batched call, ensuring all hypothesized strategic links are recorded in the graph with their justifications.
+    params:
+      canvasId: "[Project Sentinel Canvas ID]"
+      edges: "[Aggregated list of all new inferential edges with supporting content]"
+created_date: "2025-07-21"
+last_updated_date: "2025-07-21"
+category: Project Sentinel

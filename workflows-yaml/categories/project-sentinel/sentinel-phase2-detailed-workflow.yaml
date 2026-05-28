@@ -1,0 +1,84 @@
+name: Sentinel-Phase2-Detailed
+version: 2.0.0
+description: Deconstructs Huawei's global supply chain by analyzing trade data, identifying suppliers through open-source intelligence, and modeling the network in Atlas using the mandated batch ingestion protocol.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - Supply-Chain
+  - Data-Ingestion
+  - Atlas
+  - Huawei
+  - UNComtrade
+  - Batch-Processing
+steps:
+  - server: uncomtrade-mcp-server
+    tool: comtrade_get_trade_data
+    action: 'Step 2.1: Analyze Strategic Commodity Flows'
+    description: Tracks the flow of critical electronic components from key manufacturing/trans-shipment hubs to China to identify potential indirect supply routes.
+    params:
+      reporterCountries:
+        - VNM
+        - SGP
+        - KOR
+      partnerCountries:
+        - CHN
+      commodities:
+        - '8542'
+        - '8541'
+        - '8517'
+        - '901380'
+      timePeriods:
+        - '2019'
+        - '2020'
+        - '2021'
+        - '2022'
+        - '2023'
+        - '2024'
+        - '202501'
+        - '202502'
+        - '202503'
+        - '202504'
+        - '202505'
+        - '202506'
+        - '202507'
+      aggregationMode: summarized
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: 'Step 2.2: Identify Known and Suspected Suppliers'
+    description: Performs targeted web research to compile a comprehensive list of Huawei's direct and indirect component suppliers from product teardowns, news reports, and supplier lists.
+    params:
+      query: '[Iterate through queries like: ''"Huawei Mate 60 Pro" component suppliers teardown'', ''"OFILM Group" supplies to Huawei'', ''publicly traded companies supplying "Huawei"'']'
+  - server: firecrawl-mcp-server
+    tool: firecrawl_scrape
+    action: 'Step 2.3: Scrape Supplier Portals and Financial Disclosures'
+    description: Gathers official and financial data to corroborate suspected supplier relationships by scraping supplier websites and financial reports for mentions of Huawei as a customer.
+    params:
+      url: '[URL of supplier financial report PDF or corporate website]'
+  - server: agent-native
+    tool: manual_review_and_aggregate
+    action: 'Step 2.4: Data Aggregation and Structuring'
+    description: 'An offline step where the agent processes all findings. Responsibilities include: 1. **De-duplication**: Ensure supplier companies are unique. 2. **Data Structuring**: Map rich relational data (component type, value, source) for each edge. 3. **Aggregation**: Compile comprehensive lists of all new supplier ''Company'' nodes and all ''SUPPLIES_TO'' edges.'
+    params: {}
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: 'Step 2.4: Batched Node Ingestion'
+    description: Ingests all new, unique supplier 'Company' nodes into the graph in a single, batched call.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all new supplier Company nodes]'
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: 'Step 2.4: Batched Edge Ingestion'
+    description: Creates all 'SUPPLIES_TO' relationships in a single, batched call to link the new suppliers to Huawei.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[Aggregated list of all new SUPPLIES_TO edges]'
+  - server: atlas-mcp-server
+    tool: atlas_update_edges
+    action: 'Step 2.4: Bulk Edge Enrichment'
+    description: Executes a single, batched update call to populate all newly created 'SUPPLIES_TO' edges with their corresponding detailed properties (component type, source document, value, etc.), ensuring all discovered data is recorded efficiently.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[List of edge updates with enriched content for each SUPPLIES_TO edge]'
+created_date: '2025-07-21'
+last_updated_date: '2025-07-21'
+category: Project Sentinel

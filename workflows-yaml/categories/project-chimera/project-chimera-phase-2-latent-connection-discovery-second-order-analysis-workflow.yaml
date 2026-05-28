@@ -1,0 +1,74 @@
+name: 'Project Chimera - Phase 2: Latent Connection Discovery & Second-Order Analysis'
+version: 1.0.0
+description: To move beyond explicit data to discover implicit, inferred relationships by analyzing co-occurrences, network proximity, and temporal patterns.
+author: Cline
+tags:
+  - atlas
+  - perplexity
+  - echarts
+  - latent connections
+  - analysis
+steps:
+  - server: atlas-mcp-server
+    tool: atlas_query_canvas
+    action: query_canvas
+    description: Run complex, multi-hop queries to surface hidden connections.
+    params:
+      canvasId: Project Chimera
+      queryDefinition:
+        nodes:
+          nodeType: Person
+          content: {}
+        edges:
+          edgeType: INVENTOR_OF
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: search
+    description: Investigate discovered overlaps from Atlas queries with highly targeted research.
+    params:
+      query: '"Dr. Jane Doe" "Corporation A" "Corporation B" research collaboration'
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: create_edges
+    description: Create new, 'inferred' edges with confidence scores and justifications.
+    params:
+      canvasId: Project Chimera
+      edges:
+        - sourceNodeId: Placeholder for Corporation Node ID A
+          targetNodeId: Placeholder for Corporation Node ID B
+          edgeType: INFERRED_COLLABORATION
+          content:
+            confidence_score: 0.8
+            justification: Based on shared inventors and research publications.
+        - sourceNodeId: Placeholder for Person Node ID A
+          targetNodeId: Placeholder for Person Node ID B
+          edgeType: SHARED_AFFILIATION
+          content:
+            confidence_score: 0.7
+            justification: Co-authorship on multiple papers.
+  - server: echarts-mcp-server
+    tool: echarts_render_interactive_chart
+    action: render_chart
+    description: Visualize trends such as hiring velocity or geographic distribution of patent filings over time.
+    params:
+      charts:
+        - title: Hiring Velocity for AI Engineers by City
+          option:
+            xAxis:
+              type: category
+              data:
+                - City A
+                - City B
+                - City C
+            yAxis:
+              type: value
+            series:
+              - data:
+                  - 120
+                  - 200
+                  - 150
+                type: bar
+      data: []
+created_date: '2025-07-13'
+last_updated_date: '2025-07-13'
+category: Project Chimera

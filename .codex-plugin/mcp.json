@@ -1,0 +1,9 @@
+{
+  "workflows-mcp-server": {
+    "command": "npx",
+    "args": ["-y", "workflows-mcp-server"],
+    "env": {
+      "MCP_TRANSPORT_TYPE": "stdio"
+    }
+  }
+}

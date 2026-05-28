@@ -1,0 +1,68 @@
+{
+  "name": "workflows-mcp-server",
+  "version": "0.1.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "workflows-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "changelog/",
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "Dockerfile",
+    "server.json"
+  ],
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "rebuild": "tsx scripts/clean.ts && tsx scripts/build.ts",
+    "clean": "tsx scripts/clean.ts",
+    "devcheck": "tsx scripts/devcheck.ts",
+    "audit:refresh": "rm -f bun.lock && bun install && bun audit",
+    "tree": "tsx scripts/tree.ts",
+    "list-skills": "tsx scripts/list-skills.ts",
+    "format": "biome check --write --unsafe .",
+    "lint:mcp": "tsx scripts/lint-mcp.ts",
+    "lint:packaging": "tsx scripts/lint-packaging.ts",
+    "bundle": "npm run build && npx -y @anthropic-ai/mcpb pack . dist/workflows-mcp-server.mcpb",
+    "changelog:build": "tsx scripts/build-changelog.ts",
+    "changelog:check": "tsx scripts/build-changelog.ts --check",
+    "test": "vitest run",
+    "start": "node dist/index.js",
+    "start:stdio": "MCP_TRANSPORT_TYPE=stdio node dist/index.js",
+    "start:http": "MCP_TRANSPORT_TYPE=http node dist/index.js"
+  },
+  "keywords": ["mcp", "mcp-server", "model-context-protocol"],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "bun": ">=1.3.0",
+    "node": ">=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@cyanheads/mcp-ts-core": "^0.9.11",
+    "pino-pretty": "^13.1.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@types/node": "^25.9.1",
+    "depcheck": "^1.4.7",
+    "ignore": "^7.0.5",
+    "tsc-alias": "^1.8.17",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

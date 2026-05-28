@@ -1,0 +1,56 @@
+name: Sentinel-Phase7-Detailed
+version: 2.0.0
+description: Analyzes Huawei's ecosystem relative to competitors and academic partners, mapping competitive wins and university collaborations using the mandated batch ingestion protocol.
+author: NVIDIA Government Affairs - Strategic Intelligence
+tags:
+  - Competitive-Analysis
+  - Academic-Partnerships
+  - Atlas
+  - Huawei
+  - Batch-Processing
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: 'Step 7.1 & 7.2: Identify Competitors and University Partnerships'
+    description: 'Performs targeted research to identify: 1. Huawei''s main competitors in key technology sectors (5G, cloud, AI). 2. Huawei''s global network of academic collaborations (sponsored research, joint labs).'
+    params:
+      query: '[Iterate through queries for both competitors and university partnerships as specified in the instructions]'
+  - server: procurements-mcp-server
+    tool: procure_search_contracts
+    action: 'Step 7.1: Comparative Procurement Search'
+    description: Re-runs procurement searches for the identified competitors to establish a baseline for comparative analysis against Huawei's contract wins.
+    params:
+      countryCode: '[Iterate: ''USA'', ''EU'', ''CHN'']'
+      keywords: '[Keywords for identified competitors, e.g., ''Ericsson'', ''Nokia'', ''Cisco'']'
+      timePeriod:
+        startDate: '2020-01-01T00:00:00Z'
+        endDate: '[Current Date]'
+  - server: agent-native
+    tool: manual_review_and_aggregate
+    action: 'Step 7.1 & 7.2: Data Aggregation for Graph Ingestion'
+    description: 'An offline step where the agent processes all research findings. Responsibilities include: 1. **De-duplication**: Ensure all entities are unique. 2. **Aggregation**: Compile lists for all new nodes (''Company'' for competitors, ''ProcurementContract'' for their wins, ''University'') and all new edges (''AWARDED_CONTRACT'', ''FULFILLED_BY'', ''PARTNERS_WITH''). 3. **Enrichment Prep**: Prepare detailed content for ''PARTNERS_WITH'' edges.'
+    params: {}
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: 'Step 7.1 & 7.2: Batched Node Ingestion'
+    description: Ingests all new, unique nodes (competitor Companies, their ProcurementContracts, and partner Universities) into the graph in a single, batched call.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      nodes: '[Aggregated list of all new Company, ProcurementContract, and University nodes]'
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: 'Step 7.1 & 7.2: Batched Edge Ingestion'
+    description: Creates all corresponding relationships for the new nodes in a single, batched call.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[Aggregated list of all new AWARDED_CONTRACT, FULFILLED_BY, and PARTNERS_WITH edges]'
+  - server: atlas-mcp-server
+    tool: atlas_update_edges
+    action: 'Step 7.2: Bulk Edge Enrichment for Partnerships'
+    description: Executes a batched update to enrich all newly created 'PARTNERS_WITH' edges with their corresponding details (program name, research field), ensuring a rich map of academic collaborations.
+    params:
+      canvasId: '[Project Sentinel Canvas ID]'
+      edges: '[List of edge updates with enriched content for each PARTNERS_WITH edge]'
+created_date: '2025-07-21'
+last_updated_date: '2025-07-21'
+category: Project Sentinel

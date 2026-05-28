@@ -1,0 +1,12 @@
+name: Final Response Test Workflow
+version: 1.0.0
+description: A test to verify the new response format.
+author: Cline
+steps:
+  - server: test-server
+    tool: test-tool
+    params:
+      message: Final test
+created_date: '2025-06-21'
+last_updated_date: '2025-06-21'
+category: Testing

@@ -1,0 +1,68 @@
+name: 'Project Chimera - Phase 3: Predictive Synthesis & Continuous Intelligence Distillation'
+version: 1.0.0
+description: To transform the historical knowledge graph into a predictive model and establish a framework for continuous, automated intelligence gathering.
+author: Cline
+tags:
+  - workflow
+  - firecrawl
+  - ntfy
+  - predictive
+  - automation
+  - monitoring
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: search
+    description: Actively seek confirming or disconfirming evidence for predictive hypotheses.
+    params:
+      query: new hires with quantum physics PhDs, new shell corps with 'quantum' in the name, and lobbying efforts related to national quantum initiatives
+  - server: workflows-mcp-server
+    tool: workflow_create_new
+    action: create_new
+    description: Build and deploy persistent monitoring workflows for high-value DataSource nodes.
+    params:
+      name: Automated DataSource Monitoring
+      version: 1.0.0
+      description: Monitors a specific DataSource URL for changes and updates the Atlas graph.
+      author: Cline
+      category: Project Chimera - Monitoring
+      tags:
+        - monitoring
+        - firecrawl
+        - atlas
+        - automation
+      steps:
+        - server: firecrawl-mcp-server
+          tool: firecrawl_scrape
+          action: scrape
+          description: Scrape the DataSource URL for new content.
+          params:
+            url: Placeholder for DataSource URL
+            onlyMainContent: true
+            formats:
+              - markdown
+        - server: atlas-mcp-server
+          tool: atlas_update_node
+          action: update_node
+          description: Update the corresponding DataSource node in Atlas with new content or metadata.
+          params:
+            nodeId: Placeholder for DataSource Node ID
+            newContent:
+              last_checked_timestamp: Current Timestamp
+              latest_content_hash: Hash of scraped content
+  - server: ntfy-mcp-server
+    tool: send_ntfy
+    action: send_notification
+    description: Trigger an immediate, high-priority notification for detected anomalies.
+    params:
+      topic: ATLAS
+      message: 'Anomaly detected: A key executive has changed affiliation. Review the relevant subgraph.'
+      title: Project Chimera Anomaly Alert
+      priority: 5
+      tags:
+        - warning
+        - skull
+      click: Placeholder for link to relevant Atlas subgraph
+created_date: '2025-07-13'
+last_updated_date: '2025-07-13'
+category: Project Chimera

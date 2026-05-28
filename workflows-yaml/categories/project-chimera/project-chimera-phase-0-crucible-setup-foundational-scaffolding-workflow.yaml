@@ -1,0 +1,89 @@
+name: 'Project Chimera - Phase 0: Crucible Setup & Foundational Scaffolding'
+version: 1.0.0
+description: To forge the operational environment, establish the foundational data schema, and inoculate the knowledge graph with a high-fidelity seed entity.
+author: Cline
+tags:
+  - atlas
+  - perplexity
+  - firecrawl
+  - foundational
+  - scaffolding
+steps:
+  - server: atlas-mcp-server
+    tool: atlas_create_canvas
+    action: create_canvas
+    description: Create the master 'Project Chimera' canvas with schema definition.
+    params:
+      name: Project Chimera
+      description: 'Schema Definition: Core Node Types (Corporation, Person, Patent, Publication, Contract, DataSource, Location, PoliticalDonation) and Edge Types (HAS_SUBSIDIARY, INVENTOR_OF, EMPLOYED_AT, PARTNERS_WITH, AWARDED_CONTRACT, PUBLISHED_IN, CITES, LOBBIED_ON).'
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: search
+    description: Gather foundational, verifiable data on the primary target using precise queries.
+    params:
+      query: '"Huawei Technologies Co., Ltd." official corporate registration number China'
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: search
+    description: Gather foundational, verifiable data on the primary target using precise queries.
+    params:
+      query: '"Huawei Technologies Co., Ltd." headquarters full address'
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: search
+    description: Gather foundational, verifiable data on the primary target using precise queries.
+    params:
+      query: '"Ren Zhengfei" official biography'
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: create_nodes
+    description: Create the central 'Genesis Node' for the target corporation, densely populated with data and source URLs.
+    params:
+      canvasId: Project Chimera
+      nodes:
+        - nodeType: Corporation
+          content:
+            name: Huawei Technologies Co., Ltd.
+            data: Placeholder for data from perplexity_search results, citing source URLs.
+            source_url: Placeholder for source URL
+  - server: firecrawl-mcp-server
+    tool: firecrawl_search
+    action: search
+    description: Locate official URLs for national business registries.
+    params:
+      query: national business registries official URLs
+  - server: firecrawl-mcp-server
+    tool: firecrawl_search
+    action: search
+    description: Locate official URLs for patent and trademark offices (e.g., USPTO, WIPO, CNIPA).
+    params:
+      query: patent and trademark offices official URLs
+  - server: firecrawl-mcp-server
+    tool: firecrawl_search
+    action: search
+    description: Locate official URLs for lobbying disclosure databases.
+    params:
+      query: lobbying disclosure databases official URLs
+  - server: firecrawl-mcp-server
+    tool: firecrawl_search
+    action: search
+    description: Locate official URLs for government contract portals.
+    params:
+      query: government contract portals official URLs
+  - server: atlas-mcp-server
+    tool: atlas_create_nodes
+    action: create_nodes
+    description: Create DataSource nodes for each discovered URL with rich metadata.
+    params:
+      canvasId: Project Chimera
+      nodes:
+        - nodeType: DataSource
+          content:
+            url: Placeholder for discovered URL
+            region: Placeholder for region
+            source_type: Placeholder for source type
+            reliability_score: Placeholder for reliability score
+            last_checked_timestamp: Placeholder for timestamp
+created_date: '2025-07-13'
+last_updated_date: '2025-07-13'
+category: Project Chimera

@@ -1,0 +1,71 @@
+name: Vastmind-Phase1-Detailed
+version: 1.0.0
+description: 'Phase 1: Lays the foundational scaffolding for the knowledge graph by creating the Atlas canvas and populating it with core strategic entities.'
+author: Cline
+tags:
+  - scaffolding
+  - graph-initialization
+  - vastmind
+steps:
+  - server: atlas-mcp-server
+    tool: atlas_create_canvas
+    action: create_canvas
+    description: Create the central Atlas canvas for aggregating all research data.
+    params:
+      name: Nvidia-China-Intel
+      description: A knowledge graph tracking China's technology ecosystem with a focus on the semiconductor sector for Nvidia's strategic analysis.
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: research_and_create_node
+    description: Research and create nodes for the core strategic companies.
+    params:
+      queries:
+        - Nvidia key products, affiliations, and connections
+        - Huawei key products, affiliations, and connections
+        - HiSilicon key products, affiliations, and connections
+        - SMIC key products, affiliations, and connections
+        - ASML key products, affiliations, and connections
+        - TSMC key products, affiliations, and connections
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: research_and_create_node
+    description: Research and create nodes for key competitors and peers.
+    params:
+      queries:
+        - Intel key products, affiliations, and connections
+        - AMD key products, affiliations, and connections
+        - Qualcomm key products, affiliations, and connections
+        - Tencent AI key products, affiliations, and connections
+        - Baidu AI key products, affiliations, and connections
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: research_and_create_node
+    description: Research and create nodes for key regulators.
+    params:
+      queries:
+        - US Bureau of Industry and Security (BIS) role and regulations
+        - US Department of the Treasury role and regulations
+        - China Ministry of Industry and Information Technology (MIIT) role and policies
+        - Cyberspace Administration of China (CAC) role and policies
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    action: research_and_create_node
+    description: Research and create nodes for key investment funds.
+    params:
+      queries:
+        - China Investment Corporation (CIC) investments and focus
+        - Shenzhen Capital Group investments and focus
+        - National Integrated Circuit Industry Investment Fund (The Big Fund) investments and impact
+  - server: atlas-mcp-server
+    tool: atlas_create_edges
+    action: create_edge
+    description: Create initial edge between Huawei and HiSilicon.
+    params:
+      canvasId: Nvidia-China-Intel
+      edges:
+        - sourceNodeId: Huawei
+          targetNodeId: HiSilicon
+          edgeType: Owns
+created_date: '2025-07-10'
+last_updated_date: '2025-07-10'
+category: Project Vastmind

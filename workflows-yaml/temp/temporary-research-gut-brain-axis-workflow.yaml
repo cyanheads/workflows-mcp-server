@@ -1,0 +1,39 @@
+name: Temporary-Research-Gut-Brain-Axis
+version: 1.0.0
+description: A temporary workflow to research the Gut-Brain Axis. It uses Perplexity to find the latest research and saves the findings to a temporary note in Obsidian.
+author: Cline
+category: Temporary
+tags:
+  - research
+  - gut-biome
+  - gut-brain-axis
+  - perplexity
+  - obsidian
+steps:
+  - server: perplexity-mcp-server
+    tool: perplexity_search
+    description: 'Step 1: Conduct a Perplexity search for recent, high-quality review articles on the Gut-Brain Axis.'
+    params:
+      query: latest review articles on the gut-brain axis, focusing on mechanisms of communication and impact on mood, cognition, and neurological health
+      return_related_questions: true
+      search_recency_filter: year
+  - server: obsidian-mcp-server
+    tool: obsidian_update_note
+    description: 'Step 2: Save the raw research findings from the Perplexity search into a temporary markdown file in Obsidian for later synthesis.'
+    params:
+      targetType: filePath
+      targetIdentifier: Atlas/research/temp-gut-brain-axis-findings.md
+      modificationType: wholeFile
+      wholeFileMode: overwrite
+      createIfNeeded: true
+      content: |-
+        ## Gut-Brain Axis Research Findings
+
+        **Source Query:** latest review articles on the gut-brain axis, focusing on mechanisms of communication and impact on mood, cognition, and neurological health
+
+        **Perplexity Search Results:**
+
+        {{step_1_output}}
+temporary: true
+created_date: '2025-06-25'
+last_updated_date: '2025-06-25'
