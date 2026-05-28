@@ -1,12 +1,13 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "workflows-mcp-server",
-  "description": "",
+  "name": "io.github.cyanheads/workflows-mcp-server",
+  "description": "LLM agent workflow library: store and query YAML playbooks, execute them via the agent's own tools.",
   "repository": {
-    "url": "",
+    "url": "https://github.com/cyanheads/workflows-mcp-server",
     "source": "github"
   },
   "version": "0.1.0",
+  "remotes": [],
   "packages": [
     {
       "registryType": "npm",
