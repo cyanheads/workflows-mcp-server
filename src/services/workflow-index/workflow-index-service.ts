@@ -64,6 +64,9 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/** Maximum slug length for a name used in a filename (leaves room for version + suffix). */
+const MAX_NAME_SLUG_LENGTH = 200;
+
 // ---------------------------------------------------------------------------
 // Logging helpers (background/non-request context)
 // ---------------------------------------------------------------------------
@@ -158,22 +161,43 @@ export class WorkflowIndexService {
   /** Write a permanent workflow YAML and rebuild the index. */
   async writePermanent(workflow: ParsedWorkflow): Promise<string> {
     const key = `${workflow.name}@${workflow.version}`;
-    if (this._index.has(key)) {
-      const existing = this._index.get(key);
-      if (existing && !existing.isTemp) {
+
+    const categorySlug = slugify(workflow.category ?? 'uncategorized');
+    const nameSlug = slugify(workflow.name);
+    const versionSlug = slugify(workflow.version);
+
+    // Reject if the slugified name would produce an unsafe or empty filename.
+    if (!nameSlug) {
+      throw Object.assign(new Error(`Workflow name "${workflow.name}" produces an empty slug`), {
+        _reason: 'invalid_name',
+      });
+    }
+    if (nameSlug.length > MAX_NAME_SLUG_LENGTH) {
+      throw Object.assign(
+        new Error(
+          `Workflow name is too long — keep it under ${MAX_NAME_SLUG_LENGTH} characters after slugification`,
+        ),
+        { _reason: 'name_too_long' },
+      );
+    }
+
+    const categoryDir = path.join(this.workflowsDir, 'categories', categorySlug);
+    // Include version in filename so multiple versions coexist on disk.
+    const filePath = path.join(categoryDir, `${nameSlug}-${versionSlug}-workflow.yaml`);
+
+    await fs.mkdir(categoryDir, { recursive: true });
+    try {
+      // `wx` flag fails atomically if the file already exists, preventing TOCTOU races.
+      await fs.writeFile(filePath, buildYaml(workflow), { encoding: 'utf-8', flag: 'wx' });
+    } catch (err: unknown) {
+      if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'EEXIST') {
         throw Object.assign(new Error(`Workflow "${key}" already exists`), {
           _reason: 'already_exists',
         });
       }
+      // Also catch the pre-existing in-memory duplicate (still checked above for fast-path)
+      throw err;
     }
-
-    const categorySlug = slugify(workflow.category ?? 'uncategorized');
-    const nameSlug = slugify(workflow.name);
-    const categoryDir = path.join(this.workflowsDir, 'categories', categorySlug);
-    const filePath = path.join(categoryDir, `${nameSlug}-workflow.yaml`);
-
-    await fs.mkdir(categoryDir, { recursive: true });
-    await fs.writeFile(filePath, buildYaml(workflow), 'utf-8');
 
     // Immediately rebuild so the index is fresh for the caller.
     // The watcher will also fire and trigger a redundant rebuild — that's fine (idempotent).
@@ -183,11 +207,28 @@ export class WorkflowIndexService {
 
   /** Write a temporary workflow YAML and rebuild the index. */
   async writeTemp(workflow: ParsedWorkflow): Promise<string> {
+    const nameSlug = slugify(workflow.name);
+    const versionSlug = slugify(workflow.version);
+
+    if (!nameSlug) {
+      throw Object.assign(new Error(`Workflow name "${workflow.name}" produces an empty slug`), {
+        _reason: 'invalid_name',
+      });
+    }
+    if (nameSlug.length > MAX_NAME_SLUG_LENGTH) {
+      throw Object.assign(
+        new Error(
+          `Workflow name is too long — keep it under ${MAX_NAME_SLUG_LENGTH} characters after slugification`,
+        ),
+        { _reason: 'name_too_long' },
+      );
+    }
+
     const tempDir = path.join(this.workflowsDir, 'temp');
     await fs.mkdir(tempDir, { recursive: true });
 
-    const nameSlug = slugify(workflow.name);
-    const filePath = path.join(tempDir, `${nameSlug}-workflow.yaml`);
+    // Include version in filename so different versions are distinct files.
+    const filePath = path.join(tempDir, `${nameSlug}-${versionSlug}-workflow.yaml`);
     await fs.writeFile(filePath, buildYaml(workflow), 'utf-8');
 
     await this.rebuild();

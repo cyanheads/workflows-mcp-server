@@ -129,6 +129,19 @@ describe('workflowList', () => {
     expect(result.workflows).toHaveLength(0);
   });
 
+  it('tag filtering is case-insensitive (regression: fix #4)', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    // Stored tags are lowercase "git" — filter with uppercase "GIT" should still match
+    const inputUpper = workflowList.input.parse({ tags: ['GIT'] });
+    const resultUpper = workflowList.handler(inputUpper, ctx);
+    expect(resultUpper.totalCount).toBe(2);
+
+    const inputMixed = workflowList.input.parse({ tags: ['Git', 'Daily'] });
+    const resultMixed = workflowList.handler(inputMixed, ctx);
+    expect(resultMixed.totalCount).toBe(1);
+    expect(resultMixed.workflows[0].name).toBe('git-wrap-up');
+  });
+
   it('includes tools list when includeTools is true', () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ category: 'git', includeTools: true });

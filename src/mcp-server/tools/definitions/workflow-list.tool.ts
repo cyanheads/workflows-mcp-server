@@ -12,7 +12,7 @@ export const workflowList = tool('workflow_list', {
   description:
     'List all permanent workflows in the index. Supports optional filtering by category and tags (AND match). ' +
     'Set includeTools to true to surface the unique <server>/<tool> pairs used across each matching workflow. ' +
-    'Temporary workflows are excluded from results. Returns the full catalog when no filters are applied.',
+    'Temporary workflows are excluded from results.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 
   input: z.object({
@@ -99,10 +99,10 @@ export const workflowList = tool('workflow_list', {
         if (!wf.category?.toLowerCase().includes(category.toLowerCase())) continue;
       }
 
-      // Tags filter (AND match)
+      // Tags filter (AND match, case-insensitive)
       if (tags && tags.length > 0) {
-        const wfTags = wf.tags ?? [];
-        const allMatch = tags.every((t) => wfTags.includes(t));
+        const wfTagsLower = (wf.tags ?? []).map((t) => t.toLowerCase());
+        const allMatch = tags.every((t) => wfTagsLower.includes(t.toLowerCase()));
         if (!allMatch) continue;
       }
 

@@ -117,30 +117,12 @@ describe('workflowCreate', () => {
     });
   });
 
-  it('throws invalid_steps when steps array is empty (handler belt-and-suspenders)', async () => {
-    // Zod schema has .min(1) so we manually bypass it to test the handler-level guard
+  it('throws write_failed for whitespace-only category', async () => {
     const ctx = createMockContext({ errors: workflowCreate.errors });
-    const input = {
-      ...(workflowCreate.input.parse(VALID_INPUT) as object),
-      steps: [],
-    } as Parameters<typeof workflowCreate.handler>[0];
-
+    const input = workflowCreate.input.parse({ ...VALID_INPUT, category: '   ' });
     await expect(workflowCreate.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.ValidationError,
-      data: { reason: 'invalid_steps' },
-    });
-  });
-
-  it('throws invalid_steps when a step is missing the server field', async () => {
-    const ctx = createMockContext({ errors: workflowCreate.errors });
-    const input = {
-      ...(workflowCreate.input.parse(VALID_INPUT) as object),
-      steps: [{ server: '', tool: 'some_tool' }],
-    } as Parameters<typeof workflowCreate.handler>[0];
-
-    await expect(workflowCreate.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.ValidationError,
-      data: { reason: 'invalid_steps' },
+      code: JsonRpcErrorCode.InternalError,
+      data: { reason: 'write_failed' },
     });
   });
 
@@ -167,7 +149,7 @@ describe('workflowCreate', () => {
 
   it('formats output with key and file path', () => {
     const output = {
-      filePath: '/tmp/wf/categories/deployment/standard-deploy-workflow.yaml',
+      filePath: '/tmp/wf/categories/deployment/standard-deploy-1-0-0-workflow.yaml',
       key: 'Standard Deploy@1.0.0',
       created_date: '2026-05-28',
       last_updated_date: '2026-05-28',

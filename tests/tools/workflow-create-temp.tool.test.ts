@@ -111,29 +111,16 @@ describe('workflowCreateTemp', () => {
 
   // --- error paths ---
 
-  it('throws invalid_steps when steps array is empty (handler guard)', async () => {
+  it('throws write_failed for a name that slugifies to empty string', async () => {
     const ctx = createMockContext({ errors: workflowCreateTemp.errors });
+    // Bypass Zod min(1) to exercise the service-level invalid_name guard
     const input = {
       ...(workflowCreateTemp.input.parse(VALID_INPUT) as object),
-      steps: [],
+      name: '   ',
     } as Parameters<typeof workflowCreateTemp.handler>[0];
-
     await expect(workflowCreateTemp.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.ValidationError,
-      data: { reason: 'invalid_steps' },
-    });
-  });
-
-  it('throws invalid_steps when a step has an empty server field', async () => {
-    const ctx = createMockContext({ errors: workflowCreateTemp.errors });
-    const input = {
-      ...(workflowCreateTemp.input.parse(VALID_INPUT) as object),
-      steps: [{ server: '', tool: 'some_tool' }],
-    } as Parameters<typeof workflowCreateTemp.handler>[0];
-
-    await expect(workflowCreateTemp.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.ValidationError,
-      data: { reason: 'invalid_steps' },
+      code: JsonRpcErrorCode.InternalError,
+      data: { reason: 'write_failed' },
     });
   });
 
@@ -159,7 +146,7 @@ describe('workflowCreateTemp', () => {
 
   it('formats output with key, file path, and temp note', () => {
     const output = {
-      filePath: '/tmp/workflows/temp/quick-research-plan-workflow.yaml',
+      filePath: '/tmp/workflows/temp/quick-research-plan-1-0-0-workflow.yaml',
       key: 'Quick Research Plan@1.0.0',
       created_date: '2026-05-28',
       last_updated_date: '2026-05-28',

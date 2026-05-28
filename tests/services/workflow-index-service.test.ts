@@ -345,7 +345,7 @@ describe('WorkflowIndexService', () => {
     });
 
     expect(filePath).toContain('git-operations');
-    expect(filePath).toContain('new-workflow-workflow.yaml');
+    expect(filePath).toContain('new-workflow-1-0-0-workflow.yaml');
     expect(svc.index.has('new-workflow@1.0.0')).toBe(true);
   });
 
@@ -382,6 +382,95 @@ describe('WorkflowIndexService', () => {
 
     const entry = svc.index.get('my-plan@1.0.0');
     expect(entry?.isTemp).toBe(true);
+  });
+
+  // --- multi-version coexistence (regression: fix #1) ---
+
+  it('preserves all 3 version files on disk when creating 3 versions of the same workflow', async () => {
+    await svc.init();
+
+    const base = {
+      name: 'multi-ver-wf',
+      description: 'Multi-version test',
+      author: 'tester',
+      category: 'testing',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    };
+
+    await svc.writePermanent({ ...base, version: '1.0.0' });
+    await svc.writePermanent({ ...base, version: '1.0.2' });
+    await svc.writePermanent({ ...base, version: '2.0.0' });
+
+    // All 3 entries present in index
+    expect(svc.index.has('multi-ver-wf@1.0.0')).toBe(true);
+    expect(svc.index.has('multi-ver-wf@1.0.2')).toBe(true);
+    expect(svc.index.has('multi-ver-wf@2.0.0')).toBe(true);
+
+    // All 3 files exist on disk
+    const catDir = path.join(dir, 'categories', 'testing');
+    const files = await fs.readdir(catDir);
+    expect(files).toContain('multi-ver-wf-1-0-0-workflow.yaml');
+    expect(files).toContain('multi-ver-wf-1-0-2-workflow.yaml');
+    expect(files).toContain('multi-ver-wf-2-0-0-workflow.yaml');
+
+    // Lookup by version returns the correct workflow
+    expect(svc.findWorkflow('multi-ver-wf', '1.0.0')?.workflow.version).toBe('1.0.0');
+    expect(svc.findWorkflow('multi-ver-wf', '1.0.2')?.workflow.version).toBe('1.0.2');
+    expect(svc.findWorkflow('multi-ver-wf', '2.0.0')?.workflow.version).toBe('2.0.0');
+  });
+
+  // --- TOCTOU race / EEXIST guard (regression: fix #3) ---
+
+  it('rejects duplicate permanent workflow via EEXIST on second concurrent-style write', async () => {
+    await svc.init();
+    const wf = {
+      name: 'eexist-test',
+      version: '1.0.0',
+      description: 'eexist test',
+      author: 'me',
+      category: 'testing',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    };
+    await svc.writePermanent(wf);
+
+    // Second write of same version must fail with already_exists
+    const err = await svc.writePermanent(wf).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('already_exists');
+  });
+
+  // --- empty-slug guard (regression: fix #8) ---
+
+  it('rejects a name that slugifies to empty string', async () => {
+    await svc.init();
+    const wf = {
+      name: '   ', // whitespace-only slugifies to empty
+      version: '1.0.0',
+      description: 'empty slug test',
+      author: 'me',
+      category: 'testing',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    };
+    const err = await svc.writePermanent(wf).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('invalid_name');
+  });
+
+  // --- name length guard (regression: fix #7) ---
+
+  it('rejects a name that produces a slug exceeding MAX_NAME_SLUG_LENGTH', async () => {
+    await svc.init();
+    const wf = {
+      name: 'a'.repeat(210), // 210 chars > MAX_NAME_SLUG_LENGTH of 200
+      version: '1.0.0',
+      description: 'too long',
+      author: 'me',
+      category: 'testing',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    };
+    const err = await svc.writePermanent(wf).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('name_too_long');
   });
 
   // --- permanent vs temp separation ---

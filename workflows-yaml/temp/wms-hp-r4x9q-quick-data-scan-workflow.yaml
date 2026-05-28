@@ -1,0 +1,22 @@
+name: WMS-HP-R4X9Q Quick Data Scan
+version: "1.0.0"
+description: Temporary single-session workflow for quick data scanning before batch processing.
+author: WMS-HP-R4X9Q Test Agent
+tags:
+  - temp
+  - wms-hp-r4x9q
+  - scan
+created_date: "2026-05-28"
+last_updated_date: "2026-05-28"
+temporary: true
+steps:
+  - server: filesystem-mcp-server
+    tool: list_directory
+    description: List all data files in the scan directory.
+    params:
+      path: "{{input.scan_dir}}"
+  - server: data-tools
+    tool: preview_file
+    description: Preview the first N rows of each discovered file.
+    params:
+      rows: 10

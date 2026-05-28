@@ -33,8 +33,8 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
   description:
     'Write a temporary workflow to the temp/ directory. ' +
     'Temporary workflows are indexed and retrievable via workflow_get but excluded from workflow_list results. ' +
-    'No conflict check — temp is throwaway. Useful for one-shot plans, passing plans between agents by name, ' +
-    'or scaffolding during reasoning chains. The server stamps created_date and last_updated_date automatically.',
+    'No conflict check — temp is throwaway. Useful for one-shot plans, short-lived scaffolding, or workflows not intended for the permanent library. ' +
+    'The server stamps created_date and last_updated_date automatically.',
   annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
 
   input: z.object({
@@ -64,40 +64,21 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
 
   errors: [
     {
-      reason: 'invalid_steps',
-      code: JsonRpcErrorCode.ValidationError,
-      when: 'Steps array is empty or a step is missing required server/tool fields.',
-      recovery: 'Each step must have server and tool fields; provide at least one step.',
-    },
-    {
       reason: 'write_failed',
       code: JsonRpcErrorCode.InternalError,
-      when: 'Filesystem write error (permissions, disk full).',
-      recovery: 'Check that the workflows directory is writable and has sufficient disk space.',
+      when: 'Filesystem write error (permissions, disk full, or name too long).',
+      recovery:
+        'Check that the workflows directory is writable, has sufficient disk space, and that the workflow name is not excessively long.',
     },
   ],
 
   async handler(input, ctx) {
     const svc = getWorkflowIndexService();
 
-    // Validate steps
-    if (input.steps.length === 0) {
-      throw ctx.fail('invalid_steps', 'At least one step is required', {
-        ...ctx.recoveryFor('invalid_steps'),
-      });
-    }
-    for (const step of input.steps) {
-      if (!step.server || !step.tool) {
-        throw ctx.fail('invalid_steps', 'Each step must have server and tool fields', {
-          ...ctx.recoveryFor('invalid_steps'),
-        });
-      }
-    }
-
     const today = new Date().toISOString().slice(0, 10);
     const workflow: ParsedWorkflow = {
-      name: input.name,
-      version: input.version,
+      name: input.name.trim(),
+      version: input.version.trim(),
       description: input.description,
       author: input.author,
       ...(input.tags !== undefined && { tags: input.tags }),
@@ -119,25 +100,33 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
     try {
       filePath = await svc.writeTemp(workflow);
     } catch (err: unknown) {
+      const reason = (err as { _reason?: string })._reason;
+      if (err instanceof Error && (reason === 'name_too_long' || reason === 'invalid_name')) {
+        throw ctx.fail('write_failed', err.message, { ...ctx.recoveryFor('write_failed') });
+      }
       ctx.log.error(
         'Failed to write temp workflow',
         err instanceof Error ? err : new Error(String(err)),
       );
-      throw ctx.fail('write_failed', `Failed to write temp workflow: ${String(err)}`, {
+      const safeMsg =
+        err instanceof Error
+          ? err.message.replace(/\s*open '.*?'/g, '').trim()
+          : 'Unknown write error';
+      throw ctx.fail('write_failed', `Failed to write temp workflow: ${safeMsg}`, {
         ...ctx.recoveryFor('write_failed'),
       });
     }
 
     ctx.log.info('workflow_create_temp completed', {
-      name: input.name,
-      version: input.version,
+      name: workflow.name,
+      version: workflow.version,
       filePath,
     });
 
     return {
       status: 'created' as const,
       filePath,
-      key: `${input.name}@${input.version}`,
+      key: `${workflow.name}@${workflow.version}`,
       created_date: today,
       last_updated_date: today,
     };
