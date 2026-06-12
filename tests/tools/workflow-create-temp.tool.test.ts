@@ -111,7 +111,7 @@ describe('workflowCreateTemp', () => {
 
   // --- error paths ---
 
-  it('throws write_failed for a name that slugifies to empty string', async () => {
+  it('throws invalid_input for a name that slugifies to empty string', async () => {
     const ctx = createMockContext({ errors: workflowCreateTemp.errors });
     // Bypass Zod min(1) to exercise the service-level invalid_name guard
     const input = {
@@ -119,8 +119,8 @@ describe('workflowCreateTemp', () => {
       name: '   ',
     } as Parameters<typeof workflowCreateTemp.handler>[0];
     await expect(workflowCreateTemp.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InternalError,
-      data: { reason: 'write_failed' },
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'invalid_input' },
     });
   });
 

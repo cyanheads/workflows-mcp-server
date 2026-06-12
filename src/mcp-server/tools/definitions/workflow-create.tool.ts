@@ -71,6 +71,13 @@ export const workflowCreate = tool('workflow_create', {
 
   errors: [
     {
+      reason: 'invalid_input',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'A field passed schema validation but is semantically invalid: a blank/whitespace-only category, or a name that slugifies to empty or exceeds the filename length limit.',
+      recovery:
+        'Provide a non-blank category and a workflow name that contains alphanumeric characters and stays under 200 characters after slugification.',
+    },
+    {
       reason: 'already_exists',
       code: JsonRpcErrorCode.Conflict,
       when: 'A permanent workflow with this name@version already exists in the index.',
@@ -79,9 +86,9 @@ export const workflowCreate = tool('workflow_create', {
     {
       reason: 'write_failed',
       code: JsonRpcErrorCode.InternalError,
-      when: 'Filesystem write error (permissions, disk full, or name too long).',
+      when: 'Filesystem write error such as insufficient permissions or a full disk.',
       recovery:
-        'Check that the workflows directory is writable, has sufficient disk space, and that the workflow name is not excessively long.',
+        'Check that the workflows directory is writable and has sufficient disk space, then retry.',
     },
   ],
 
@@ -90,8 +97,8 @@ export const workflowCreate = tool('workflow_create', {
 
     // Reject whitespace-only category at the tool boundary (Zod min(1) passes "   ").
     if (input.category.trim().length === 0) {
-      throw ctx.fail('write_failed', 'Category must not be blank or whitespace-only.', {
-        ...ctx.recoveryFor('write_failed'),
+      throw ctx.fail('invalid_input', 'Category must not be blank or whitespace-only.', {
+        ...ctx.recoveryFor('invalid_input'),
       });
     }
 
@@ -129,8 +136,9 @@ export const workflowCreate = tool('workflow_create', {
         );
       }
       if (err instanceof Error && (reason === 'name_too_long' || reason === 'invalid_name')) {
-        // Surface name validation issues as write_failed with the service's message (no path leak).
-        throw ctx.fail('write_failed', err.message, { ...ctx.recoveryFor('write_failed') });
+        // Name-slug validation failures are bad input, not server faults — surface as
+        // ValidationError with the service's message (no path leak).
+        throw ctx.fail('invalid_input', err.message, { ...ctx.recoveryFor('invalid_input') });
       }
       ctx.log.error(
         'Failed to write workflow',

@@ -64,11 +64,18 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
 
   errors: [
     {
+      reason: 'invalid_input',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'The workflow name passed schema validation but slugifies to empty or exceeds the filename length limit.',
+      recovery:
+        'Provide a workflow name that contains alphanumeric characters and stays under 200 characters after slugification.',
+    },
+    {
       reason: 'write_failed',
       code: JsonRpcErrorCode.InternalError,
-      when: 'Filesystem write error (permissions, disk full, or name too long).',
+      when: 'Filesystem write error such as insufficient permissions or a full disk.',
       recovery:
-        'Check that the workflows directory is writable, has sufficient disk space, and that the workflow name is not excessively long.',
+        'Check that the workflows directory is writable and has sufficient disk space, then retry.',
     },
   ],
 
@@ -102,7 +109,8 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
     } catch (err: unknown) {
       const reason = (err as { _reason?: string })._reason;
       if (err instanceof Error && (reason === 'name_too_long' || reason === 'invalid_name')) {
-        throw ctx.fail('write_failed', err.message, { ...ctx.recoveryFor('write_failed') });
+        // Name-slug validation failures are bad input, not server faults.
+        throw ctx.fail('invalid_input', err.message, { ...ctx.recoveryFor('invalid_input') });
       }
       ctx.log.error(
         'Failed to write temp workflow',

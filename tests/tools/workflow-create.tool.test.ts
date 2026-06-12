@@ -117,12 +117,21 @@ describe('workflowCreate', () => {
     });
   });
 
-  it('throws write_failed for whitespace-only category', async () => {
+  it('throws invalid_input for whitespace-only category', async () => {
     const ctx = createMockContext({ errors: workflowCreate.errors });
     const input = workflowCreate.input.parse({ ...VALID_INPUT, category: '   ' });
     await expect(workflowCreate.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InternalError,
-      data: { reason: 'write_failed' },
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'invalid_input' },
+    });
+  });
+
+  it('throws invalid_input when the name slugifies to empty', async () => {
+    const ctx = createMockContext({ errors: workflowCreate.errors });
+    const input = workflowCreate.input.parse({ ...VALID_INPUT, name: '!!!', version: '4.0.0' });
+    await expect(workflowCreate.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'invalid_input' },
     });
   });
 
