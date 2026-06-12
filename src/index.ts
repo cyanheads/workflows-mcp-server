@@ -11,6 +11,8 @@ import { allToolDefinitions } from './mcp-server/tools/definitions/index.js';
 import { initWorkflowIndexService } from './services/workflow-index/workflow-index-service.js';
 
 await createApp({
+  name: 'workflows-mcp-server',
+  title: 'workflows-mcp-server',
   tools: allToolDefinitions,
   resources: [],
   prompts: [],
