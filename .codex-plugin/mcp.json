@@ -1,7 +1,7 @@
 {
-  "workflows-mcp-server": {
+  "@cyanheads/workflows-mcp-server": {
     "command": "npx",
-    "args": ["-y", "workflows-mcp-server"],
+    "args": ["-y", "@cyanheads/workflows-mcp-server"],
     "env": {
       "MCP_TRANSPORT_TYPE": "stdio"
     }

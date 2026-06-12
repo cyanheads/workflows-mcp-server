@@ -1,25 +1,25 @@
 {
-  "name": "workflows-mcp-server",
-  "version": "0.1.1",
-  "description": "",
+  "name": "@cyanheads/workflows-mcp-server",
+  "version": "0.1.2",
+  "description": "Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.",
   "author": {
-    "name": "",
-    "email": "",
-    "url": ""
+    "name": "cyanheads",
+    "email": "casey@caseyjhand.com",
+    "url": "https://caseyjhand.com"
   },
-  "homepage": "",
-  "repository": "",
+  "homepage": "https://github.com/cyanheads/workflows-mcp-server#readme",
+  "repository": "https://github.com/cyanheads/workflows-mcp-server",
   "license": "Apache-2.0",
-  "keywords": ["mcp", "mcp-server", "model-context-protocol"],
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "workflows", "playbooks", "agents"],
   "mcpServers": "./.codex-plugin/mcp.json",
   "interface": {
     "displayName": "workflows-mcp-server",
-    "shortDescription": "",
-    "longDescription": "",
-    "developerName": "",
-    "category": "",
+    "shortDescription": "Store, query, and create YAML workflow playbooks for LLM agents via MCP.",
+    "longDescription": "MCP server for agent workflow playbooks — store, query, and create reusable YAML playbooks that guide LLM agents through multi-step tasks. STDIO or Streamable HTTP.",
+    "developerName": "cyanheads",
+    "category": "developer tools",
     "capabilities": ["Read"],
-    "websiteURL": "",
+    "websiteURL": "https://github.com/cyanheads/workflows-mcp-server",
     "defaultPrompt": []
   }
 }
