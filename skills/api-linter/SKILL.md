@@ -4,7 +4,7 @@ description: >
   MCP definition linter rules reference. Use when `bun run lint:mcp` or `bun run devcheck` reports a lint error or warning (`format-parity`, `schema-is-object`, `name-format`, `server-json-*`, etc.) and you need to understand the rule, its severity, and how to fix it. Every rule ID the linter emits has an entry in this doc.
 metadata:
   author: cyanheads
-  version: "1.3"
+  version: "1.7"
   audience: external
   type: reference
 ---
@@ -46,13 +46,14 @@ Grouped by family. Jump to any rule ID via its anchor.
 | Schema | `schema-is-object`, `describe-on-fields`, `schema-serializable` | [Schema rules](#schema-rules) |
 | Portability | `schema-format-portability`, `schema-anyof-needs-type`, `schema-no-discriminator-keyword`, `schema-no-defs`, `schema-dialect-tag` | [Portability rules](#portability-rules) |
 | Names | `name-required`, `name-format`, `name-unique` | [Name rules](#name-rules) |
-| Tools | `description-required`, `handler-required`, `auth-type`, `auth-scope-format`, `annotation-type`, `annotation-coherence`, `meta-ui-type`, `meta-ui-resource-uri-required`, `meta-ui-resource-uri-scheme`, `app-tool-resource-pairing` | [Tool rules](#tool-rules) |
+| Tools | `description-required`, `handler-required`, `auth-type`, `auth-scope-format`, `annotation-type`, `annotation-coherence`, `meta-ui-type`, `meta-ui-resource-uri-required`, `meta-ui-resource-uri-scheme`, `app-tool-resource-pairing`, `canvas-consumer-missing` | [Tool rules](#tool-rules) |
 | Resources | `uri-template-required`, `uri-template-valid`, `resource-name-not-uri`, `template-params-align` | [Resource rules](#resource-rules) |
 | Landing | `landing-*` (23 rules — shape, tagline, logo, links, repo, envExample, connectSnippets, theme) | [Landing config rules](#landing-config-rules) |
 | Prompts | `generate-required` | [Prompt rules](#prompt-rules) |
 | Handler body | `prefer-mcp-error-in-handler`, `prefer-error-factory`, `preserve-cause-on-rethrow`, `no-stringify-upstream-error` | [Handler body rules](#handler-body-rules) |
 | Error contract (structural) | `error-contract-type`, `error-contract-empty`, `error-contract-entry-type`, `error-contract-code-type`, `error-contract-code-unknown`, `error-contract-code-unknown-error`, `error-contract-reason-required`, `error-contract-reason-format`, `error-contract-reason-unique`, `error-contract-when-required`, `error-contract-retryable-type`, `error-contract-recovery-required`, `error-contract-recovery-empty`, `error-contract-recovery-min-words` | [Error contract rules](#error-contract-rules) |
 | Error contract (conformance) | `error-contract-conformance`, `error-contract-prefer-fail` | [Error contract rules](#error-contract-rules) |
+| Enrichment | `enrichment-type`, `enrichment-empty`, `enrichment-field-type`, `enrichment-output-collision`, `enrichment-prefer-block`, `enrichment-trailer-render`, `enrichment-trailer-orphan`, `enrichment-trailer-unknown-field`, `capped-list-no-truncation` | [Enrichment rules](#enrichment-rules) |
 | server.json | ~40 rules prefixed `server-json-*` | [server.json rules](#server-json-rules) |
 
 ---
@@ -366,6 +367,29 @@ An app tool's `_meta.ui.resourceUri` must match the `uriTemplate` of a registere
 
 **Fix:** either correct the `resourceUri` to match an existing resource, or register the resource it references. Use the `add-app-tool` skill's paired scaffold to avoid this.
 
+### canvas-consumer-missing
+
+**Severity:** warning
+
+Fires when the registered tool set contains at least one tool whose output schema has a depth-0 field named `canvas_id` or `canvasId`, but no consumer tool is registered — that is, no tool name ends with `_dataframe_query` and no extra names are listed in `canvasConsumers`.
+
+A canvas token with no query path is dead output: the agent receives the token but has no tool to send it to. The fix runs in either direction:
+
+- **Complete the integration** — add the standard `<prefix>_dataframe_query` and `<prefix>_dataframe_describe` consumers (see `api-canvas`).
+- **Remove the staging** — when the data isn't row-shaped (nested, heterogeneous, single-record payloads), SQL access adds nothing. Drop the DataCanvas integration rather than adding tools to justify it.
+
+**Knob:** suppress via `LintInput.canvasConsumers`:
+
+```ts
+// Accept a non-standard query tool name:
+validateDefinitions({ tools, canvasConsumers: ['my_sql_query'] });
+
+// Disable the rule entirely:
+validateDefinitions({ tools, canvasConsumers: false });
+```
+
+**Env var:** `MCP_LINT_CANVAS_CONSUMERS` — comma-separated tool names; the literal `false` disables. A programmatic `LintInput.canvasConsumers` takes precedence over the env var. Servers that need the knob set `MCP_LINT_CANVAS_CONSUMERS=my_query_tool` in their `.env` or CI environment.
+
 ---
 
 ## Resource rules
@@ -514,7 +538,7 @@ Heuristic source-text checks that scan `handler.toString()` for common error-han
 
 Fires when a handler contains `throw new Error(...)`. Plain `Error` doesn't carry a JSON-RPC code — the framework's auto-classifier degrades to `InternalError`, hiding the actual failure mode.
 
-Plain `Error` is acceptable for "don't care" cases where the specific code doesn't matter (per CLAUDE.md: "plain `Error` for don't-care cases"). This rule targets domain-specific failures that deserve a concrete code — upgrade those to factories or `ctx.fail`, and accept the warning for the rest.
+Plain `Error` is acceptable for "don't care" cases where the specific code doesn't matter (per CLAUDE.md/AGENTS.md: "plain `Error` for don't-care cases"). This rule targets domain-specific failures that deserve a concrete code — upgrade those to factories or `ctx.fail`, and accept the warning for the rest.
 
 **Fix:** use `McpError` or a factory for domain-specific failures:
 
@@ -681,13 +705,13 @@ Fires when `recovery` has fewer than 5 words. Short recoveries like "Try again."
 
 **Severity:** warning
 
-Cross-check rule. Fires when a handler throws a non-baseline code (via `JsonRpcErrorCode.X` or a factory like `notFound()`) that isn't declared in `errors[]`.
+Cross-check rule. Fires when a handler throws a non-baseline code (via `new McpError(JsonRpcErrorCode.X, …)` or a factory like `notFound()`) that isn't declared in `errors[]`.
 
 Baseline codes (`InternalError`, `ServiceUnavailable`, `Timeout`, `ValidationError`, `SerializationError`) are auto-allowed because they bubble from anywhere — services, framework utilities, the auto-classifier — and are implicitly always-possible on any tool. Only domain-specific codes need declaring.
 
 **Fix:** add the missing code to `errors[]` with a stable reason, or route through `ctx.fail(reason, …)` if it maps to an existing entry.
 
-**Heuristic limitations:** the scan reads `handler.toString()` and only catches direct `throw new McpError(JsonRpcErrorCode.X, …)` and `throw factory(…)` patterns. Indirect throws (`const e = notFound(); throw e;`), throws from called services, and throws via runtime helpers like `httpErrorFromResponse(...)` are invisible.
+**Heuristic limitations:** the scan reads `handler.toString()` and only counts code *construction* sites — `new McpError(JsonRpcErrorCode.X, …)` and `throw factory(…)`. A bare `JsonRpcErrorCode.X` reference in a comparison (`err.code === JsonRpcErrorCode.X`) or a `case` label is not a throw and is correctly ignored. Indirect throws (`const e = notFound(); throw e;`), throws from called services, and throws via runtime helpers like `httpErrorFromResponse(...)` are invisible.
 
 ### error-contract-prefer-fail
 
@@ -705,6 +729,127 @@ throw ctx.fail('no_match', 'No items match');
 ```
 
 The diagnostic message includes the declared reason(s) for the code so you can copy-paste.
+
+---
+
+## Enrichment rules
+
+Validate the `enrichment` block — the success-path counterpart to `errors[]`. Enrichment fields are merged into `structuredContent` and advertised as `output.extend(enrichment)`, so the linter guards the block's shape and its disjointness from `output`. See `api-context`'s `ctx.enrich` and `add-tool`'s **Tool Response Design**.
+
+### enrichment-type
+
+**Severity:** error
+
+Fires when `enrichment` is present but isn't a plain object mapping field names to Zod schemas (a `ZodRawShape`) — e.g. an array or a primitive.
+
+**Fix:** declare `enrichment: { <name>: <ZodType>, … }`.
+
+### enrichment-empty
+
+**Severity:** warning
+
+Fires when `enrichment: {}` is declared with no fields — a no-op.
+
+**Fix:** drop the field, or declare the agent-facing fields `ctx.enrich(...)` will populate.
+
+### enrichment-field-type
+
+**Severity:** error
+
+Fires when an enrichment field's value isn't a Zod schema.
+
+**Fix:** use a Zod type (`z.string().describe(…)`, `z.number().describe(…)`, …) for every enrichment field.
+
+### enrichment-output-collision
+
+**Severity:** error
+
+Fires when an enrichment key matches an `output` key. The effective output schema is `output.extend(enrichment)`, so a collision silently overrides the `output` field.
+
+**Fix:** rename one side so enrichment keys are disjoint from output keys.
+
+### enrichment-prefer-block
+
+**Severity:** warning
+
+Advisory. Fires when a tool has **no** `enrichment` block but an `output` field whose name strongly signals agent-facing context (`notice`, `effectiveQuery`, `queryEcho`) rather than domain payload.
+
+**Fix:** move the field into an `enrichment` block and populate it via `ctx.enrich(...)` — it reaches both client surfaces without a `format()` entry. Ignore if the field is genuinely domain data. Deliberately conservative — common domain fields like `totalCount` are not flagged.
+
+### enrichment-trailer-render
+
+**Severity:** error
+
+Fires when a non-scalar (object/array) enrichment field has no `enrichmentTrailer.render`. It would `JSON.stringify` into a one-line blob in the `content[]` trailer (`structuredContent` keeps the full value either way). The `delta` shape (`z.object({ before, after })`, populated by `ctx.enrich.delta()`) is exempt — it renders natively as `field: before → after`.
+
+**Fix:** add a renderer — `enrichmentTrailer: { <field>: { render: (v) => … } }` — use `ctx.enrich.delta()` for before/after state, or opt into the JSON blob explicitly with `render: (v) => JSON.stringify(v)`.
+
+### enrichment-trailer-orphan
+
+**Severity:** error
+
+Fires when `enrichmentTrailer` is declared without an `enrichment` block — trailer config only renders enrichment fields.
+
+**Fix:** add the `enrichment` block, or drop the `enrichmentTrailer`.
+
+### enrichment-trailer-unknown-field
+
+**Severity:** error
+
+Fires when an `enrichmentTrailer` key doesn't match any declared `enrichment` field (a typo or drift the `keyof`-typed config already catches for TS authors).
+
+**Fix:** rename the trailer key to a declared enrichment field, or remove it.
+
+### capped-list-no-truncation
+
+**Severity:** warning
+
+Fires when a tool:
+1. has a depth-0 input field named `limit`, `per_page`, `page_size`, `max_results`, or `max_items` (case-insensitive; camelCase twins like `perPage`, `maxResults` match too), AND
+2. has at least one depth-0 array-typed `output` field, AND
+3. declares no truncation disclosure.
+
+**Disclosure-present (rule silent) when** any of the following is true:
+- The declared `enrichment` shape has a `truncated` or `totalCount` key (`ctx.enrich.truncated()` and `ctx.enrich.total()` satisfy this).
+- The `output` schema has a depth-0 `truncated` or `totalCount` field.
+
+A silently capped list leaves the agent unaware that results were cut off — it may treat a partial set as complete. Use `ctx.enrich.truncated({ shown, cap })` for the one-liner:
+
+```ts
+// In the enrichment block:
+enrichment: {
+  truncated: z.boolean().describe('True when the list was capped at the limit.'),
+  shown: z.number().describe('Number of items returned.'),
+  cap: z.number().describe('The limit applied.'),
+},
+
+// In the handler:
+if (items.length >= input.limit) {
+  ctx.enrich.truncated({ shown: items.length, cap: input.limit });
+}
+```
+
+Or use `ctx.enrich.total(n)` when the upstream total is known — that writes `totalCount`, which is also recognized as honest disclosure.
+
+**Threshold bound:** when the list is sorted by the cap key and the upstream total is unknowable (e.g. an API returning only the page), the smallest shown value upper-bounds all omitted items. Pass it as `ceiling`:
+
+```ts
+ctx.enrich.truncated({ shown: items.length, cap: input.limit, ceiling: items.at(-1)?.count });
+```
+
+Declare `truncationCeiling: z.number().optional()` in the `enrichment` block to surface it.
+
+**Knob:** suppress via `LintInput.truncationAllowlist`:
+
+```ts
+// Exempt a specific tool:
+validateDefinitions({ tools, truncationAllowlist: ['my_search_tool'] });
+
+// Disable the rule entirely:
+validateDefinitions({ tools, truncationAllowlist: false });
+```
+
+**Env var:** `MCP_LINT_TRUNCATION_ALLOWLIST` — comma-separated tool names; the literal `false` disables. A programmatic `LintInput.truncationAllowlist` takes precedence.
 
 ---
 

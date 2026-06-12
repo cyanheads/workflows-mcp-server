@@ -4,7 +4,7 @@ description: >
   Testing patterns for MCP tool/resource handlers using `createMockContext` and Vitest. Covers mock context options, handler testing, McpError assertions, format testing, Vitest config setup, and test isolation conventions.
 metadata:
   author: cyanheads
-  version: "1.2"
+  version: "1.5"
   audience: external
   type: reference
 ---
@@ -19,6 +19,52 @@ Tests target handler behavior directly — call `handler(input, ctx)`, assert on
 
 ---
 
+## `mcpTest` — fixture-based Vitest test
+
+`mcpTest` is a `test.extend`-based Vitest test that provides `ctx` and `storage` as **per-test fixtures** — fresh instances for every test, eliminating the `createMockContext()` boilerplate and enforcing the fresh-context-per-test convention automatically.
+
+```ts
+import { mcpTest } from '@cyanheads/mcp-ts-core/testing/vitest';
+
+mcpTest('echoes the message', async ({ ctx }) => {
+  const result = await echoTool.handler(echoTool.input.parse({ message: 'hi' }), ctx);
+  expect(result.message).toBe('hi');
+});
+
+mcpTest('uses storage fixture', async ({ ctx, storage }) => {
+  const svc = new MyService(config, storage);
+  const result = await svc.doWork(ctx);
+  expect(result).toBeDefined();
+});
+```
+
+### Fixtures
+
+| Fixture | Type | Per-test? | Notes |
+|:--------|:-----|:----------|:------|
+| `ctx` | `Context` | Yes | Fresh `createMockContext()` each test |
+| `storage` | `StorageService` | Yes | Fresh `createInMemoryStorage()` each test |
+
+### Extending with the function form
+
+Override fixtures using the **function form** (`async ({}, use) => { ... }`) to preserve per-test freshness. A bare-value override shares one mutable instance across the entire file — defeating the fixture's isolation guarantee.
+
+```ts
+import { createMockContext } from '@cyanheads/mcp-ts-core/testing/vitest';
+
+// Correct — function form gives each test a fresh context:
+const tenantTest = mcpTest.extend({
+  ctx: async ({}, use) => { await use(createMockContext({ tenantId: 'test-tenant' })); },
+});
+
+// Wrong — bare value shares one ctx across every test in the file:
+// const tenantTest = mcpTest.extend({ ctx: createMockContext({ tenantId: 'test-tenant' }) });
+```
+
+`createMockContext` and `createInMemoryStorage` are re-exported from `@cyanheads/mcp-ts-core/testing/vitest` so overrides don't need a second import.
+
+---
+
 ## `createMockContext` options
 
 ```ts
@@ -27,7 +73,6 @@ import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 createMockContext()                                           // minimal — ctx.state operations throw without tenantId
 createMockContext({ tenantId: 'test-tenant' })               // enables ctx.state (tenant-scoped in-memory storage)
 createMockContext({ errors: myTool.errors })                 // attaches typed ctx.fail keyed by the contract reasons
-createMockContext({ sample: vi.fn().mockResolvedValue(...) }) // with MCP sampling
 createMockContext({ elicit: vi.fn().mockResolvedValue(...) }) // with elicitation
 createMockContext({ progress: true })                        // with task progress (ctx.progress populated)
 createMockContext({ requestId: 'my-id' })                    // override request ID (default: 'test-request-id')
@@ -52,7 +97,6 @@ interface MockContextOptions {
   progress?: boolean;
   sessionId?: string;
   requestId?: string;
-  sample?: (messages: SamplingMessage[], opts?: SamplingOpts) => Promise<CreateMessageResult>;
   signal?: AbortSignal;
   tenantId?: string;
   uri?: URL;
@@ -61,7 +105,7 @@ interface MockContextOptions {
 
 | Option | Effect |
 |:-------|:-------|
-| _(none)_ | Minimal context — `ctx.state` operations throw without `tenantId`; `ctx.elicit`/`ctx.sample`/`ctx.progress` are `undefined` |
+| _(none)_ | Minimal context — `ctx.state` operations throw without `tenantId`; `ctx.elicit`/`ctx.progress` are `undefined` |
 | `auth` | Sets `ctx.auth` for scope-checking tests |
 | `elicit` | Assigns a function to `ctx.elicit` for testing elicitation calls |
 | `errors` | Attaches a typed `ctx.fail` against the contract — same wiring the production handler factory uses. Pass `myTool.errors` directly. |
@@ -72,7 +116,6 @@ interface MockContextOptions {
 | `sessionId` | Sets `ctx.sessionId` for handlers that branch on session ID |
 | `progress` | Populates `ctx.progress` with real state-tracking implementation (see below) |
 | `requestId` | Overrides `ctx.requestId` (default: `'test-request-id'`) |
-| `sample` | Assigns a function to `ctx.sample` for testing sampling calls |
 | `signal` | Overrides `ctx.signal` — useful for cancellation testing |
 | `tenantId` | Sets `ctx.tenantId` and enables `ctx.state` operations with in-memory storage |
 | `uri` | Sets `ctx.uri` for resource handler testing |
@@ -162,17 +205,6 @@ it('uses elicitation when available', async () => {
   const input = myTool.input.parse({ query: 'hello' });
   await myTool.handler(input, ctx);
   expect(elicit).toHaveBeenCalledOnce();
-});
-
-it('uses sampling when available', async () => {
-  const sample = vi.fn().mockResolvedValue({
-    role: 'assistant',
-    content: { type: 'text', text: 'Summary text' },
-  });
-  const ctx = createMockContext({ sample });
-  const input = myTool.input.parse({ query: 'summarize this' });
-  const result = await myTool.handler(input, ctx);
-  expect(result.summary).toBeDefined();
 });
 
 it('handles missing elicitation gracefully', async () => {
@@ -322,6 +354,22 @@ it('throws NotFound for missing resource', async () => {
 ```
 
 Use `.rejects.toThrow(McpError)` to assert type only. Use `.rejects.toMatchObject({ code: ... })` when the specific error code matters.
+
+---
+
+## Output schema assertions
+
+`expect.schemaMatching` (Vitest 4, Standard Schema) validates a value against any Zod schema — including the definition's own `output`. Use it to assert schema conformance without duplicating the shape in the test:
+
+```ts
+it('output conforms to the declared output schema', async () => {
+  const ctx = createMockContext();
+  const result = await myTool.handler(myTool.input.parse({ query: 'x' }), ctx);
+  expect(result).toEqual(expect.schemaMatching(myTool.output));
+});
+```
+
+It composes as an asymmetric matcher anywhere a value is expected — e.g. `toHaveBeenCalledWith(expect.schemaMatching(schema))`. Prefer exact-value assertions when the expected output is fully known; reach for `schemaMatching` when the output is dynamic (timestamps, generated IDs) or the schema itself is the contract under test.
 
 ---
 

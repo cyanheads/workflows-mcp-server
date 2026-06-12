@@ -12,5 +12,8 @@
   },
   "outdated": {
     "allowlist": []
+  },
+  "skillVersions": {
+    "ignore": ["migrate-mcp-ts-template"]
   }
 }

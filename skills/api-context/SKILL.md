@@ -1,17 +1,17 @@
 ---
 name: api-context
 description: >
-  Canonical reference for the unified `Context` object passed to every tool and resource handler in `@cyanheads/mcp-ts-core`. Covers the full interface, all sub-APIs (`ctx.log`, `ctx.state`, `ctx.elicit`, `ctx.sample`, `ctx.progress`), and when to use each.
+  Canonical reference for the unified `Context` object passed to every tool and resource handler in `@cyanheads/mcp-ts-core`. Covers the full interface, all sub-APIs (`ctx.log`, `ctx.state`, `ctx.elicit`, `ctx.progress`, `ctx.enrich`), and when to use each.
 metadata:
   author: cyanheads
-  version: "1.3"
+  version: "1.8"
   audience: external
   type: reference
 ---
 
 ## Overview
 
-Every tool and resource handler receives a single `Context` (`ctx`) argument. It provides request identity, structured logging, tenant-scoped storage, optional protocol capabilities (elicitation, sampling), cancellation, and task progress — all auto-correlated to the current request.
+Every tool and resource handler receives a single `Context` (`ctx`) argument. It provides request identity, structured logging, tenant-scoped storage, optional protocol capabilities (elicitation), cancellation, and task progress — all auto-correlated to the current request.
 
 The framework auto-instruments every handler call (OTel span, duration, payload metrics). Use `ctx.log` for domain-specific logging and `ctx.state` for storage inside handlers. Use the global `logger` and `StorageService` directly only in lifecycle/background code (`setup()`, services).
 
@@ -39,10 +39,10 @@ interface Context {
   readonly state: ContextState;
 
   // Optional protocol capabilities (undefined when client doesn't support them)
-  readonly elicit?: (message: string, schema: z.ZodObject<z.ZodRawShape>) => Promise<ElicitResult>;
-  readonly sample?: (messages: SamplingMessage[], opts?: SamplingOpts) => Promise<CreateMessageResult>;
+  readonly elicit?: ElicitFn; // callable (message, schema) for form mode + .url(message, url) — see § ctx.elicit
 
-  // Notifications — present when transport supports them
+  // List-changed / resource-updated notifications — wired in every handler ctx;
+  // delivery is request-scoped (see § list-changed notifications)
   readonly notifyResourceListChanged?: () => void;
   readonly notifyResourceUpdated?: (uri: string) => void;
   readonly notifyPromptListChanged?: () => void;
@@ -56,6 +56,12 @@ interface Context {
 
   // Raw URI — present only for resource handlers
   readonly uri?: URL;
+
+  // Agent-facing success-path enrichment — accumulates notices, query echo, totals
+  // onto the request; reaches structuredContent + content[]. Always present (no-op
+  // when no `enrichment` block), strictly typed on HandlerContext<R, E> against the
+  // declared fields. Kind-tagged helpers: enrich.notice / .total / .echo.
+  readonly enrich: Enrich;
 
   // Opt-in contract resolver — always present (returns {} when no contract is attached
   // or the reason is unknown), strictly typed on HandlerContext<R> against declared reasons.
@@ -208,7 +214,7 @@ Use this only when downstream code is structured around `ctx.sessionId` and acce
 
 ### Capability-token model
 
-Surfacing `sessionId` does not change the framework's capability-as-token rule (possession of an opaque ID grants access — see CLAUDE.md `# Core Rules`). It is an opt-in *discovery-scoping* axis, not an access boundary.
+Surfacing `sessionId` does not change the framework's capability-as-token rule (possession of an opaque ID grants access — see CLAUDE.md/AGENTS.md `# Core Rules`). It is an opt-in *discovery-scoping* axis, not an access boundary.
 
 - Tokens shared across sessions (e.g. `df_<uuid>` handed from Agent A to Agent B) still resolve on the receiving side. The lookup key is the token, not the session.
 - Session-scoped *enumeration* (e.g. `dataframe_describe` returning only items registered by the current session) is a per-server pattern: maintain a session-keyed lookup of known names, gate list-all on it, but route direct lookups against the shared backing store.
@@ -247,9 +253,11 @@ await ctx.state.set(sessionKey, value);
 
 ---
 
-## `ctx.elicit` / `ctx.sample`
+## `ctx.elicit`
 
-Both are optional — `undefined` when the connected client doesn't support the capability. Check for presence before calling. A simple truthiness check is enough; no type guards needed.
+Optional — `undefined` when the connected client doesn't advertise the `elicitation` capability (checked per request, after the initialize handshake). Check for presence before calling. A simple truthiness check is enough; no type guards needed.
+
+`ctx.elicit` is an `ElicitFn` (exported from the main entry): directly callable for form-mode elicitation, with a `.url(message, url)` method for URL-mode. On the wire, the Zod schema is converted to the restricted flat JSON Schema the MCP spec requires — handlers never deal with that detail.
 
 ### `ctx.elicit` — ask the user for structured input
 
@@ -288,37 +296,48 @@ interface ElicitResult {
 
 > **Note:** `content` is not typed against the Zod schema you pass — it is a `Record` of primitives. Validate `content` against your schema manually (e.g. `MySchema.parse(result.content)`) when `action === 'accept'`.
 
+### `ctx.elicit.url` — hand the user an external link
+
+URL-mode elicitation (MCP 2025-11-25): instead of an inline form, the client directs the user to an external URL — authorization flows, hosted forms. The framework generates the protocol-required `elicitationId` internally.
+
+```ts
+if (ctx.elicit) {
+  const result = await ctx.elicit.url(
+    'Authorize access to your account',
+    'https://example.com/oauth/authorize?state=...',
+  );
+  if (result.action !== 'accept') throw forbidden('Authorization declined');
+}
+```
+
+`result.content` is absent in URL mode — the interaction completes out-of-band; only `action` reports the outcome.
+
 **Convention:** Only call `ctx.elicit` from tool handlers, not from services.
 
-### `ctx.sample` — request an LLM completion from the client
+---
 
-Requests a completion from the client's LLM via the MCP sampling protocol. Useful for AI-assisted tool behavior without managing a separate LLM provider.
+## List-changed notifications (`ctx.notify*`)
+
+Fire-and-forget signals that the tool / resource / prompt list changed (the client should re-list), or that a specific resource was updated. The framework advertises the matching `listChanged` capabilities on every `initialize`. All four are wired in every tool and resource handler context — call with optional chaining (`?.`), the type is optional for mock / forward-compat only.
 
 ```ts
-if (ctx.sample) {
-  const result = await ctx.sample(
-    [
-      { role: 'user', content: { type: 'text', text: `Summarize: ${data}` } },
-    ],
-    { maxTokens: 500 },
-  );
-  return { summary: result.content.text };
+async handler(input, ctx) {
+  await enableFeatureTools();
+  ctx.notifyToolListChanged?.();   // tells the client to re-fetch tools/list
+  return { ok: true };
 }
 ```
 
-`SamplingOpts`:
+### Delivery
 
-```ts
-interface SamplingOpts {
-  includeContext?: 'none' | 'thisServer' | 'allServers';
-  maxTokens?: number;
-  modelPreferences?: ModelPreferences;
-  stopSequences?: string[];
-  temperature?: number;
-}
-```
+A notification fired **from inside a handler** routes through that request's own channel (`relatedRequestId`), so it reaches the client on **every transport** — stdio, HTTP, and Workers — even though HTTP/Workers run a per-request `McpServer` with no long-lived notification channel.
 
-**Convention:** Only call `ctx.sample` from tool handlers, not from services.
+| Fired from | stdio | HTTP / Workers |
+|:-----------|:------|:---------------|
+| A tool / resource handler | ✅ delivered | ✅ delivered (on the request's SSE response stream) |
+| A `task: true` background handler, cron, or any non-request scope | ✅ delivered | ⚠️ dropped — no request scope to route through |
+
+The background-under-HTTP gap is a known limitation; a session-scoped notification bus would close it. `notifyResourceUpdated` routes to the calling request, not to clients that subscribed to the URI — the framework tracks no subscription state.
 
 ---
 
@@ -520,6 +539,104 @@ The `≥5 words` lint rule on contract `recovery` (validated at lint time) makes
 
 ---
 
+## `ctx.enrich`
+
+Always present on `Context`. Accumulates agent-facing **success-path** context — empty-result notices, the query/filter as the server parsed it, pagination totals — onto the request. The framework merges it into `structuredContent`, advertises `output.extend(enrichment)` as the tool's `outputSchema`, and mirrors it into a `content[]` trailer. The success-path counterpart to `ctx.fail` / `ctx.recoveryFor`.
+
+```ts
+export const search = tool('search', {
+  description: 'Search the catalog.',
+  input: z.object({ query: z.string().describe('Search terms') }),
+  output: z.object({ items: z.array(z.string()).describe('Matching items') }),
+  enrichment: {
+    effectiveQuery: z.string().describe('Query as the server parsed it'),
+    totalCount: z.number().describe('Total matches before the limit'),
+    notice: z.string().optional().describe('Guidance when nothing matched'),
+  },
+  async handler(input, ctx) {
+    const res = await runSearch(input.query);
+    ctx.enrich.echo(res.parsed);              // → effectiveQuery + "Query: …" trailer
+    ctx.enrich.total(res.total);              // → totalCount + "N total" trailer
+    if (res.items.length === 0) ctx.enrich.notice(`No matches for "${input.query}".`);
+    return { items: res.items };              // enrichment never rides in the domain return
+  },
+});
+```
+
+### Signature
+
+```ts
+// Loose (always present on Context — works without a block; service-callable):
+ctx.enrich(fields: Record<string, unknown>): void
+
+// Strict (HandlerContext<R, E> when the definition declares an enrichment block):
+ctx.enrich(fields: Partial<z.infer<ZodObject<E>>>): void
+
+// Kind-tagged field-helpers (always present) — write a conventional key and tag
+// the content[] trailer rendering:
+ctx.enrich.notice(text: string): void      // writes `notice`         → blockquote
+ctx.enrich.total(count: number): void       // writes `totalCount`     → "N total"
+ctx.enrich.echo(query: string): void        // writes `effectiveQuery`  → "Query: …"
+ctx.enrich.delta({ field, before, after }): void  // writes `{before, after}` → "field: before → after"
+
+// Truncation disclosure — for capped lists:
+ctx.enrich.truncated({ shown, cap, ceiling?, guidance? }): void
+// writes: truncated=true, shown, cap, truncationCeiling? (if ceiling provided)
+// also writes notice via guidance or a generated default (last-wins with other notice calls)
+```
+
+### Behavior
+
+| Aspect | Detail |
+|:-------|:-------|
+| Accumulation | Each call merges its fields onto the request; later calls override earlier keys. |
+| Both surfaces | Merged into `structuredContent` (validated against `output.extend(enrichment)`) and appended to `content[]` as a trailer — even when the tool defines no `format()`. |
+| Domain payload untouched | `content[]` renders the handler's return via `format()` (or the JSON default); enrichment is a separate trailer, never double-rendered. The handler return must NOT carry enrichment fields. |
+| Required-field guard | A required enrichment field never populated fails the effective-output parse — the bug surfaces loudly rather than dropping silently. |
+| No block | Calling `ctx.enrich` on a tool that declared no `enrichment` is a silent no-op (values are stripped by the parse) — the price of service-layer callability. |
+| Service usage | Services accepting `ctx: Context` can call `ctx.enrich(...)`; the value reaches `structuredContent` exactly as if the handler had. |
+| `format-parity` | Enrichment lives outside `output`, so the `format-parity` lint never requires it in `format()`. |
+| Trailer rendering | Per field: kind-tag if set (notice/total/echo/delta), else the definition's `enrichmentTrailer.render`/`label`, else `**key:** value` (objects/arrays `JSON.stringify`'d). A structured field with no `render` errors under `enrichment-trailer-render` — supply one so it renders as markdown; `structuredContent` keeps the full value regardless. |
+
+### `ctx.enrich.truncated()` — capped-list disclosure
+
+For tools that cap a list (i.e. have a `limit`/`per_page`/`page_size`/`max_results`/`max_items` input), call `truncated()` when the cap was actually hit:
+
+```ts
+enrichment: {
+  truncated: z.boolean().describe('True when the list was capped.'),
+  shown: z.number().describe('Number of items returned.'),
+  cap: z.number().describe('The limit that was applied.'),
+  truncationCeiling: z.number().optional().describe('Upper bound for omitted items (threshold bound).'),
+},
+async handler(input, ctx) {
+  const items = await fetch(input.limit);
+  if (items.length >= input.limit) {
+    ctx.enrich.truncated({
+      shown: items.length,
+      cap: input.limit,
+      ceiling: items.at(-1)?.count,      // optional — only when list sorted by cap key
+      guidance: 'Narrow with filters or raise per_page (max 200).',
+    });
+  }
+  return { items };
+},
+```
+
+| Field written | Key | Notes |
+|:---|:---|:---|
+| `truncated` | `true` | Always |
+| `shown` | `number` | Always |
+| `cap` | `number` | Always |
+| `truncationCeiling` | `number` | Only when `ceiling` is passed |
+| `notice` | `string` | Via `guidance` or a generated default; **last-wins** — a handler with multiple notice sources (e.g. both truncation and empty-result) should compose them into one string passed as `guidance`, or call `truncated()` after the other notice calls. |
+
+The `capped-list-no-truncation` lint rule fires when a cap-like input + array output shape is present without any of: `truncated` or `totalCount` in the declared `enrichment`, or `truncated` or `totalCount` in `output`. Using `ctx.enrich.total(n)` (writes `totalCount`) is also recognized as honest disclosure.
+
+See `add-tool`'s **Tool Response Design** and `skills/api-linter` (`enrichment-*` rules) for the full pattern. Test enrichment with `getEnrichment(ctx)` from `@cyanheads/mcp-ts-core/testing`.
+
+---
+
 ## Quick reference
 
 | Property | Type | Present when |
@@ -534,12 +651,12 @@ The `≥5 words` lint rule on contract `recovery` (validated at lint time) makes
 | `ctx.log` | `ContextLogger` | Always |
 | `ctx.state` | `ContextState` | Always (throws if `tenantId` missing) |
 | `ctx.signal` | `AbortSignal` | Always |
+| `ctx.enrich` | `Enrich` | Always; typed on `HandlerContext<R, E>` when an `enrichment` block is declared |
 | `ctx.elicit` | `function \| undefined` | Client supports elicitation |
-| `ctx.sample` | `function \| undefined` | Client supports sampling |
-| `ctx.notifyResourceListChanged` | `function \| undefined` | Transport supports resource notifications |
-| `ctx.notifyResourceUpdated` | `function \| undefined` | Transport supports resource notifications |
-| `ctx.notifyPromptListChanged` | `function \| undefined` | Transport supports prompt notifications |
-| `ctx.notifyToolListChanged` | `function \| undefined` | Transport supports tool notifications |
+| `ctx.notifyResourceListChanged` | `function \| undefined` | Always in handler ctx; delivery request-scoped (see [§ list-changed notifications](#list-changed-notifications-ctxnotify)) |
+| `ctx.notifyResourceUpdated` | `function \| undefined` | Always in handler ctx; delivery request-scoped |
+| `ctx.notifyPromptListChanged` | `function \| undefined` | Always in handler ctx; delivery request-scoped |
+| `ctx.notifyToolListChanged` | `function \| undefined` | Always in handler ctx; delivery request-scoped |
 | `ctx.progress` | `ContextProgress \| undefined` | Tool defined with `task: true` |
 | `ctx.uri` | `URL \| undefined` | Resource handlers only |
 | `ctx.fail` | `(reason, msg?, data?, opts?) => McpError` | Definition declares `errors[]` contract |

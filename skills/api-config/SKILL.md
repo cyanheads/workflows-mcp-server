@@ -4,7 +4,7 @@ description: >
   Reference for core and server configuration in `@cyanheads/mcp-ts-core`. Covers env var tables with defaults, priority order, server-specific Zod schema pattern, and Workers lazy-parsing requirement.
 metadata:
   author: cyanheads
-  version: "1.4"
+  version: "1.7"
   audience: external
   type: reference
 ---
@@ -23,7 +23,7 @@ Managed by `@cyanheads/mcp-ts-core`. Validated via Zod from environment variable
 
 **Priority (highest to lowest):**
 
-1. `name`/`version` overrides passed to `createApp()` or `createWorkerHandler()`
+1. `name`/`version`/`title`/`websiteUrl`/`description`/`icons` options passed to `createApp()` or `createWorkerHandler()`
 2. Environment variables
 3. `package.json` fields
 
@@ -35,9 +35,18 @@ Managed by `@cyanheads/mcp-ts-core`. Validated via Zod from environment variable
 |:--------|:-----------------|:--------|:------|
 | `MCP_SERVER_NAME` | `mcpServerName` | `package.json` `name` | Overrides package name |
 | `MCP_SERVER_VERSION` | `mcpServerVersion` | `package.json` `version` | Overrides package version |
-| `MCP_SERVER_DESCRIPTION` | `mcpServerDescription` | `package.json` `description` | Optional |
+| `MCP_SERVER_DESCRIPTION` | `mcpServerDescription` | `package.json` `description` | Optional; `createApp({ description })` wins when set |
 | `PACKAGE_NAME` | `pkg.name` | `package.json` `name` | Rarely needed |
 | `PACKAGE_VERSION` | `pkg.version` | `package.json` `version` | Rarely needed |
+
+**SDK identity fields** (API-only, no env var equivalent — passed to `createApp()` / `createWorkerHandler()`, forwarded to `initialize` and `/.well-known/mcp.json`):
+
+| Option | Type | Notes |
+|:-------|:-----|:------|
+| `title` | `string?` | Human-readable display name shown in client listings |
+| `websiteUrl` | `string?` | Canonical homepage / repository URL |
+| `description` | `string?` | One-line description; wins over `MCP_SERVER_DESCRIPTION` when set |
+| `icons` | `Implementation['icons']?` | Array of icon objects: `{ src, mimeType?, sizes?: string[], theme?: 'light'\|'dark' }` |
 | `NODE_ENV` | `environment` | `development` | Aliases: `dev`→`development`, `prod`→`production`, `test`→`testing` |
 | `MCP_LOG_LEVEL` | `logLevel` | `debug` | Aliases: `warn`→`warning`, `err`→`error`, `fatal`/`silent`→`emerg`, `trace`→`debug`, `information`→`info` |
 | `LOGS_DIR` | `logsPath` | `<project-root>/logs` | Node.js only; absolute or relative to project root |
@@ -52,6 +61,7 @@ Managed by `@cyanheads/mcp-ts-core`. Validated via Zod from environment variable
 | `MCP_HTTP_PORT` | `mcpHttpPort` | `3010` | Port for HTTP transport |
 | `MCP_HTTP_HOST` | `mcpHttpHost` | `127.0.0.1` | Bind address |
 | `MCP_HTTP_ENDPOINT_PATH` | `mcpHttpEndpointPath` | `/mcp` | HTTP endpoint path |
+| `MCP_HTTP_MAX_BODY_BYTES` | `mcpHttpMaxBodyBytes` | `1048576` (1 MiB) | Max **inbound** JSON-RPC request body; oversized requests get `413` before per-request allocation. Does **not** cap upstream data staged into a canvas or response sizes. `0` disables (defer to runtime/proxy). |
 | `MCP_HTTP_MAX_PORT_RETRIES` | `mcpHttpMaxPortRetries` | `15` | Retry count if port is busy |
 | `MCP_HTTP_PORT_RETRY_DELAY_MS` | `mcpHttpPortRetryDelayMs` | `50` | Delay between port retries (ms) |
 | `MCP_SESSION_MODE` | `mcpSessionMode` | `auto` | `stateless` \| `stateful` \| `auto` |
@@ -219,6 +229,7 @@ import { parseEnvConfig } from '@cyanheads/mcp-ts-core/config';
 const ServerConfigSchema = z.object({
   apiKey: z.string().describe('External API key'),
   maxResults: z.coerce.number().default(100),
+  verboseLogging: z.stringbool().default(false).describe('Enable verbose logging'),
 });
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
@@ -229,10 +240,13 @@ export function getServerConfig(): ServerConfig {
   _config ??= parseEnvConfig(ServerConfigSchema, {
     apiKey: 'MY_API_KEY',
     maxResults: 'MY_MAX_RESULTS',
+    verboseLogging: 'MY_VERBOSE_LOGGING',
   });
   return _config;
 }
 ```
+
+**Env booleans — use `z.stringbool()`, never `z.coerce.boolean()`.** `z.coerce.boolean()` runs `Boolean(value)`, so `"false"`, `"0"`, and `"no"` all coerce to `true` — the flag becomes impossible to disable through the environment except by omitting it entirely. `z.stringbool()` parses `true/false/1/0/yes/no/on/off` (case-insensitive) and rejects anything else, so `MY_VERBOSE_LOGGING=false` actually disables and a typo fails loudly at startup instead of silently coercing. Empty string and unset both fall through to `.default()`.
 
 **Why `parseEnvConfig`?** It maps Zod schema paths to env var names so validation errors name the actual variable at fault. A missing `MY_API_KEY` produces:
 

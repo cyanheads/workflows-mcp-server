@@ -40,7 +40,7 @@ function makeWorkflowYaml(overrides: Record<string, unknown> = {}): string {
     lines.push(`  - server: ${step.server}`);
     lines.push(`    tool: ${step.tool}`);
   }
-  return lines.join('\n') + '\n';
+  return `${lines.join('\n')}\n`;
 }
 
 async function mkTmpDir(): Promise<string> {

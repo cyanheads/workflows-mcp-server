@@ -55,7 +55,7 @@ async function writeWorkflow(
   lines.push('  - server: test-server');
   lines.push('    tool: test_tool');
 
-  await fs.writeFile(path.join(catDir, `${name}.yaml`), lines.join('\n') + '\n', 'utf-8');
+  await fs.writeFile(path.join(catDir, `${name}.yaml`), `${lines.join('\n')}\n`, 'utf-8');
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +189,7 @@ describe('workflowList', () => {
     await fs.mkdir(catDir, { recursive: true });
     await fs.writeFile(
       path.join(catDir, 'dup-tools.yaml'),
-      [
+      `${[
         'name: dup-tools-wf',
         'version: "1.0.0"',
         'description: Workflow with duplicate tool steps',
@@ -202,7 +202,7 @@ describe('workflowList', () => {
         '    tool: search_articles',
         '  - server: notify-server',
         '    tool: send_alert',
-      ].join('\n') + '\n',
+      ].join('\n')}\n`,
       'utf-8',
     );
     // Rebuild the service with the new file

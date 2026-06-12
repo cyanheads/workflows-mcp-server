@@ -1,10 +1,10 @@
 ---
 name: api-canvas
 description: >
-  DataCanvas primitive reference — a Tier 3 SQL/analytical workspace for tabular MCP servers, backed by DuckDB. Use when registering tables from upstream APIs, running ad-hoc SQL across them, and exporting results. Covers the acquire → register → query → export flow, the token-sharing pattern for multi-agent collaboration, env config, and Cloudflare Workers fail-closed behavior.
+  DataCanvas primitive reference — a Tier 3 SQL/analytical workspace for tabular MCP servers, backed by DuckDB. Use when registering tables from upstream APIs, running ad-hoc SQL across them, and exporting results. Covers the acquire → register → query → export flow, per-table TTL, the token-sharing pattern for multi-agent collaboration, env config, and Cloudflare Workers fail-closed behavior.
 metadata:
   author: cyanheads
-  version: "1.2"
+  version: "1.6"
   audience: external
   type: reference
 ---
@@ -18,6 +18,17 @@ metadata:
 **Disabled by default.** Set `CANVAS_PROVIDER_TYPE=duckdb` to enable. Otherwise `core.canvas` is `undefined`.
 
 **Cloudflare Workers:** unsupported. DuckDB has no V8-isolate build. Setting `CANVAS_PROVIDER_TYPE=duckdb` on a Worker fails closed with a `ConfigurationError` at init time.
+
+---
+
+## When canvas earns its keep
+
+Two gates before wiring canvas in — **both** must be yes. Canvas that fails either is a SQL surface nobody queries.
+
+1. **Is the data analytical, not just large?** Canvas is for tabular/numeric result sets an agent runs SQL over — aggregate, group, join, time-series filter. A **discovery/search surface** returning categorical metadata (titles, IDs, types, dates) where the workflow is *find the record, then drill into it* does **not** qualify, regardless of row count. A 5,000-row search result is still discovery. The gate is **shape, not size**: the right question is "would an agent write `SELECT … GROUP BY` against this?", not "does it have many rows?" For name→ID resolution over a bounded list, reach for MCP-side list filtering (see the `design-mcp-server` skill) instead.
+2. **Is it too big to inline?** A result that fits the response (≤ ~100 rows of compact data) just gets inlined — no canvas. Canvas is the third option only when shape *and* size both call for it.
+
+If canvas earns its keep, it carries an obligation: **a tool that emits a `canvas_id` MUST ship a `dataframe_query` tool in the same server's surface** (see the [simple-shape Tools row](#simple-shape-defaults) and the [Checklist](#checklist)). A `canvas_id` with no query tool is dead output — the agent literally cannot reach the staged data.
 
 ---
 
@@ -118,13 +129,26 @@ await instance.registerTable('big_dataset', asyncRows, {
     { name: 'label', type: 'VARCHAR', nullable: true },
   ],
 });
+
+// Per-table TTL — this table ages on its own clock (30 min sliding window).
+// The canvas itself is unaffected; other tables on the same canvas are not touched.
+await instance.registerTable('recent_fetch', rows, { ttlMs: 30 * 60 * 1000 });
 ```
 
-**Schema inference** when `schema` is omitted: sniffer materializes the first 100 rows, unions JS-side types per column, and maps to DuckDB types. Fall-backs to `VARCHAR` for ambiguous unions (string mixed with numerics). Numeric widening: `INTEGER + DOUBLE → DOUBLE`, `INTEGER + BIGINT → BIGINT`. Column ordering follows first-appearance.
+**Schema inference** when `schema` is omitted: sniffer materializes the first 100 rows, unions JS-side types per column, and maps to DuckDB types. All inferred columns are **always nullable** — a sample can prove a column is nullable, but can never prove NOT NULL (a null may appear past the sniff window). Pass an explicit `schema` when `NOT NULL` enforcement is required. Fall-backs to `VARCHAR` for ambiguous unions (string mixed with numerics). Numeric widening: `INTEGER + DOUBLE → DOUBLE`, `INTEGER + BIGINT → BIGINT`. Column ordering follows first-appearance.
+
+**Per-table TTL (`ttlMs`)** — optional sliding TTL for this table specifically. When set:
+- The sweep loop drops the table (and clears its bookkeeping) when its window expires.
+- The TTL slides on any read or write against this table: on `registerTable` (initial set), on `query()` (both when the table appears in the SQL text and when it is the `registerAs` target).
+- The canvas itself is unaffected — canvas-level expiry is independent.
+- Tables registered without `ttlMs` inherit the canvas lifecycle exactly as before (no change to default behavior).
+- `instance.describe()` surfaces `TableInfo.expiresAt` (ISO 8601) for tables that have a per-table TTL; absent otherwise.
 
 ### `instance.query(sql, options?)`
 
-Run SQL across registered tables. Returns at most `rowLimit` rows (default 10 000). For full result sets, pass `registerAs` — the result is materialized as a new canvas table; the response carries a `preview` slice plus the table reference.
+Run SQL across registered tables. Returns at most `rowLimit` rows (default 10 000). When the result exceeds `rowLimit`, the response carries `truncated: true` and `rowCount` reflects the number of materialized rows (not the full result set). For full result sets and exact counts, pass `registerAs` — the result is materialized as a new canvas table; the response carries a `preview` slice and the exact `rowCount`.
+
+Querying a table that does not exist throws `NotFound` (`data.reason: 'missing_table'`) with a recovery hint to re-stage the table or call `describe()`. This happens when a table has expired (per-table TTL), been dropped, or the name is mistyped. The error is `NotFound`, not `ValidationError` — agents should re-stage, not fix the SQL shape.
 
 ```ts
 const result = await instance.query(`
@@ -138,11 +162,21 @@ const joined = await instance.query(`
   FROM germplasm g JOIN observations o ON g.germplasmDbId = o.germplasmDbId
 `, { registerAs: 'g_with_obs', preview: 10 });
 // joined.tableName === 'g_with_obs'; joined.rows.length === 10; joined.rowCount === <full count>
+
+// Materialize with a per-table TTL so the chained result ages independently.
+const chained = await instance.query(
+  'SELECT * FROM recent_fetch WHERE score > 0.8',
+  { registerAs: 'high_score', ttlMs: 15 * 60 * 1000 },
+);
 ```
 
 `registerAs` rejects with `ValidationError` (`data.reason: 'register_as_clash'`) if the target name already exists — drop it first.
 
-**Read-only enforcement** (four layers):
+`ttlMs` on `query({ registerAs })` assigns a per-table TTL to the materialized table — the same sliding semantics as `registerTable({ ttlMs })`. The SQL text is also scanned for referenced table names; any tracked per-table TTL entry found is slid on each `query()` call.
+
+`denySystemCatalogs?: boolean` (default `false`) — when `true`, the gate rejects any reference to system catalog namespaces (`information_schema`, `pg_catalog`, `sqlite_master`, `duckdb_<name>()` calls) at the text-scan layer before the query executes. Use on shared canvases where handle possession is the access boundary — catalog namespaces let callers enumerate every staged handle. Rejection throws `ValidationError` with `data.reason: 'system_catalog_access'`. Canvas-token servers that explicitly expose `describe()` to agents do not need this; only servers that intentionally hide the full catalog should opt in.
+
+**Read-only enforcement** (four layers + optional catalog layer):
 1. Text-level deny-list — pre-parse scan for file/HTTP-reading table functions (`read_csv*`, `read_json*`, `read_parquet*`, `read_text`, `read_blob`, `glob`, `iceberg_scan`, `delta_scan`, `postgres_scan`, `mysql_scan`, `sqlite_scan`, plus pre-staged spatial ones).
 2. Statement count (must be 1) via `extractStatements`.
 3. Statement type (must be `SELECT`) via `prepared.statementType`.
@@ -152,7 +186,7 @@ Any layer's rejection throws `ValidationError` with a structured `data.reason`. 
 
 ### `instance.registerView(name, selectSql, options?)`
 
-Register a SQL view on the canvas. The `SELECT` runs through the same four-layer gate `query()` enforces, so a malicious definition fails at registration time, not later when the view is referenced.
+Register a SQL view on the canvas. The `SELECT` runs through the same gate `query()` enforces (four layers), so a malicious definition fails at registration time, not later when the view is referenced. Pass `{ denySystemCatalogs: true }` to also block catalog namespace references in the view definition — same semantics as the `query()` flag.
 
 ```ts
 await instance.registerView(
@@ -194,7 +228,7 @@ await instance.export('g_with_obs', { format: 'csv', stream: writableStream });
 
 ```ts
 const tables = await instance.describe();
-// [{ name: 'germplasm', kind: 'table', rowCount: 200, columns: [...] }, ...]
+// [{ name: 'germplasm', kind: 'table', rowCount: 200, approxSizeBytes: 8192, columns: [...] }, ...]
 
 // Filter by kind ('table' | 'view').
 const onlyViews = await instance.describe({ kind: 'view' });
@@ -204,6 +238,8 @@ await instance.clear();                  // returns count dropped (drops views b
 ```
 
 `TableInfo.kind` discriminates `'table'` vs `'view'`. For views, `rowCount` is materialized at describe time via `COUNT(*)` — not free; treat as an approximation if the view is expensive.
+
+`TableInfo.approxSizeBytes` is set for base tables (DuckDB's `estimated_size` from `duckdb_tables()`). It is `undefined` for views — views have no entry in `duckdb_tables()`. Use it to decide what to drop when a canvas approaches its memory limit.
 
 ### Cancellation
 
@@ -245,7 +281,112 @@ If your tool surfaces row data via `structuredContent`, the JSON-safe shape flow
 
 ---
 
+## Minimum viable spillover server
+
+Most canvas use cases are public-data analytics: fetch from an upstream API, stage the full result, let the agent SQL it. The primitives are domain-neutral — `canvas.acquire()`, `spillover()`, `instance.query()` — so the minimum viable shape is small and generic. Reach for it first; add scoping only when a real multi-tenant requirement appears.
+
+### Simple-shape defaults
+
+| Concern | Simple-shape answer |
+|:--|:--|
+| Canvas scoping | One shared canvas per tenant. Omit `canvas_id` on the first call to mint one; pass the returned id back to reuse it. |
+| Table naming | `spillover()` auto-names the table `spilled_<id>`; pass `tableName` for a stable handle. A dataframe-query surface commonly adds its own `df_<id>` convention. |
+| Access control | Possession of the `canvas_id` is access — unguessable in practice (see [token-sharing model](#the-token-sharing-model)). TTL + the framework rate limiter backstop brute force. |
+| Enable flag | None of your own — canvas presence is the gate (`CANVAS_PROVIDER_TYPE=duckdb`; `getCanvas()` returns `undefined` otherwise). |
+| Tools | A fetcher that spills **plus a `dataframe_query` tool — mandatory once anything emits a `canvas_id`**: a token with no query tool in the same server is dead output (the agent can't reach the staged data). `dataframe_describe` is strongly recommended — it lets the agent discover staged table and column names before writing SQL. `dataframe_drop` is optional. None are framework-provided; you register them. |
+| Fetcher output | Two things in one response: the inline preview (answer to the immediate question) and the table handle (escape hatch for follow-up SQL via `dataframe_query`). Neither replaces the other. |
+
+> The `MCP_HTTP_MAX_BODY_BYTES` request-body cap is **inbound-only** — it bounds the JSON-RPC request, not the upstream data a handler stages into the canvas or the rows it returns. Canvas servers send small requests (queries, SQL, canvas IDs) regardless of dataset size, so the cap never constrains canvas ingestion.
+
+### Recipe
+
+A fetcher that spills and a query tool that runs SQL across what was spilled — the whole surface. Swap `fetchUpstream` for any paginated or streamed source; nothing here is domain-specific.
+
+```ts
+import { tool, z } from '@cyanheads/mcp-ts-core';
+import { spillover } from '@cyanheads/mcp-ts-core/canvas';
+import { getCanvas } from '@/services/canvas-accessor.js';
+
+/** Fetch an upstream dataset, inline a preview, spill the full result to a canvas table. */
+export const fetchDataset = tool('fetch_dataset', {
+  description:
+    'Fetch a dataset and stage it on a DataCanvas. Returns an inline preview plus a ' +
+    'canvas_id + table you can query with dataframe_query for the full result set.',
+  annotations: { readOnlyHint: true },
+  input: z.object({
+    query: z.string().describe('Upstream search/filter expression'),
+    canvas_id: z
+      .string()
+      .optional()
+      .describe('Canvas ID from a prior call. Omit to start fresh — the response returns a new one.'),
+  }),
+  output: z.object({
+    canvas_id: z.string().describe('Canvas ID — pass to dataframe_query or another fetch call'),
+    table_name: z.string().describe('Canvas table holding the full result (empty when not spilled)'),
+    spilled: z.boolean().describe('True when the result exceeded the preview and was staged'),
+    preview: z.array(z.record(z.string(), z.unknown())).describe('Inline rows — the immediate answer'),
+    row_count: z.number().describe('Rows staged on the canvas (preview length when not spilled)'),
+  }),
+  async handler(input, ctx) {
+    const canvas = getCanvas();
+    if (!canvas) throw new Error('DataCanvas is not enabled. Set CANVAS_PROVIDER_TYPE=duckdb.');
+
+    const instance = await canvas.acquire(input.canvas_id, ctx);
+    const result = await spillover({
+      canvas: instance,
+      source: fetchUpstream(input.query), // any AsyncIterable<Row> | Iterable<Row>
+      previewChars: 100_000, // ≈ 25k tokens inline
+      signal: ctx.signal,
+    });
+
+    return {
+      canvas_id: instance.canvasId,
+      table_name: result.spilled ? result.handle.tableName : '',
+      spilled: result.spilled,
+      preview: result.previewRows,
+      row_count: result.spilled ? result.handle.rowCount : result.previewRows.length,
+    };
+  },
+});
+
+/** Run read-only SQL across tables staged on a canvas. */
+export const dataframeQuery = tool('dataframe_query', {
+  description: 'Run a read-only SQL SELECT against tables staged on a canvas by fetch_dataset.',
+  annotations: { readOnlyHint: true },
+  input: z.object({
+    canvas_id: z.string().describe('Canvas ID returned by fetch_dataset'),
+    sql: z.string().describe('Read-only SELECT. Reference tables by the names fetch_dataset returned.'),
+  }),
+  output: z.object({
+    rows: z.array(z.record(z.string(), z.unknown())).describe('Result rows (capped at the canvas row limit)'),
+    row_count: z.number().describe('Full result count before the row cap'),
+  }),
+  async handler(input, ctx) {
+    const canvas = getCanvas();
+    if (!canvas) throw new Error('DataCanvas is not enabled. Set CANVAS_PROVIDER_TYPE=duckdb.');
+
+    const instance = await canvas.acquire(input.canvas_id, ctx);
+    const result = await instance.query(input.sql, { signal: ctx.signal });
+    return { rows: result.rows, row_count: result.rowCount };
+  },
+});
+```
+
+### When the simple shape is enough
+
+| Condition | Simple shape suffices? |
+|:--|:--|
+| Underlying data is publicly accessible | ✅ |
+| Single-user deployment (stdio, or HTTP with one user) | ✅ — no cross-user surface regardless of data sensitivity |
+| Use case is research / analytics, not multi-tenant SaaS | ✅ |
+| Dataframes must age individually | ✅ Use `registerTable({ ttlMs })` or `query({ registerAs, ttlMs })` — per-table TTL is independent of canvas-level expiry. The sweep loop drops expired tables while keeping the canvas (and other tables) alive. |
+| Per-user row visibility matters in a multi-user deployment | ❌ — add session/tenant scoping at the server level |
+
+The germplasm-flavored [consumer tool template](#consumer-tool-template) below is the same pattern with domain-specific naming.
+
 ## Consumer tool template
+
+A domain-specific instance of the [minimum viable spillover server](#minimum-viable-spillover-server) above — the same `acquire → register → return handle` flow with germplasm naming.
 
 ```ts
 import { tool, z } from '@cyanheads/mcp-ts-core';
@@ -305,6 +446,7 @@ const result = await spillover({
   previewChars: 100_000,           // ≈ 25k tokens of inline rows
   caps: { maxRows: 50_000 },       // hard upper bound on registered rows
   signal: ctx.signal,
+  ttlMs: 30 * 60 * 1000,          // optional: per-table TTL forwarded to registerTable
 });
 
 if (result.spilled) {
@@ -353,6 +495,7 @@ When the preview budget is small (single-digit rows) and the sniff window matter
 
 ### When *not* to use spillover
 
+- **Discovery/search surfaces.** A result that's categorical metadata for *find-then-drill-in* — search hits, ID lookups, catalog browsing — is not analytical and doesn't earn a canvas regardless of row count (see [When canvas earns its keep](#when-canvas-earns-its-keep)). Use MCP-side list filtering or plain pagination instead.
 - **Tiny known result.** If the upstream call returns ≤ 100 rows, just inline them — no canvas needed.
 - **Headless register** (caller wants the full set on canvas with zero preview rows). Call `canvas.registerTable` directly. `previewChars` is rejected at `0`; spillover always implies a visible preview.
 - **Workers runtime.** Canvas requires DuckDB native; spillover is a canvas-coupled helper. For Workers parity, persist via `ctx.state` instead.
@@ -396,6 +539,8 @@ When the preview budget is small (single-digit rows) and the sniff window matter
 - [ ] Accessor wired in `setup()` callback via `setCanvas(core.canvas)`
 - [ ] Handler guards for canvas availability (`if (!canvas) throw ...`)
 - [ ] `canvas_id` accepted as optional input, returned in output
+- [ ] A `dataframe_query` tool is registered in this server whenever any tool emits a `canvas_id` — a token with no query tool is dead output. Register `dataframe_describe` too (lets the agent discover staged table/column names)
+- [ ] Canvas earns its keep: the staged data is analytical (an agent would SQL it), not a discovery/search surface of categorical metadata
 - [ ] SQL queries are read-only (enforced by the four-layer gate, but don't attempt writes)
 - [ ] Testing: mock the module-level `getCanvas()` accessor with `vi.spyOn` or a test setup that calls `setCanvas(mockCanvas)`
 - [ ] `bun run devcheck` passes
