@@ -1,5 +1,5 @@
 {
-  "name": "@cyanheads/workflows-mcp-server",
+  "name": "workflows-mcp-server",
   "version": "0.1.2",
   "description": "Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.",
   "author": {
