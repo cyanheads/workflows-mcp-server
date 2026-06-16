@@ -1,5 +1,5 @@
 {
-  "@cyanheads/workflows-mcp-server": {
+  "workflows-mcp-server": {
     "command": "npx",
     "args": ["-y", "@cyanheads/workflows-mcp-server"],
     "env": {
