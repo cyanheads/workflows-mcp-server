@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/workflows-mcp-server",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "mcpName": "io.github.cyanheads/workflows-mcp-server",
   "description": "Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.",
   "type": "module",

@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.2.0](changelog/0.2.x/0.2.0.md) — 2026-06-30
+
+Completes library CRUD with a workflow_delete tool (by name + optional version) and adds a workflow_list keyword query filter over name and description. Tool descriptions rewritten client-facing, empty list results echo the applied filters, and the README documents the versioned per-name@version storage path.
+
 ## [0.1.4](changelog/0.1.x/0.1.4.md) — 2026-06-30
 
 Two first-run fixes: WorkflowIndexService.init() now creates a missing WORKFLOWS_DIR before rebuild/watch so the snapshot writes and the watcher stays live, and the bundled research-visualization seed workflow declares its category so it stops warning at boot and matches category-filtered workflow_list.

@@ -1,13 +1,13 @@
 <div align="center">
   <h1>@cyanheads/workflows-mcp-server</h1>
   <p><b>Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.</b>
-  <div>4 Tools</div>
+  <div>5 Tools</div>
   </p>
 </div>
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.1.4-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^6.0.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.3.2-blueviolet.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^6.0.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.3.2-blueviolet.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -23,23 +23,26 @@
 
 ## Tools
 
-Four tools covering the full workflow library lifecycle — discovery, retrieval, and creation for both permanent and temporary workflows:
+Five tools covering the full workflow library lifecycle — discovery, retrieval, creation, and deletion for both permanent and temporary workflows:
 
 | Tool | Description |
 |:-----|:------------|
-| `workflow_list` | List all permanent workflows in the index, with optional category and tag filters. |
+| `workflow_list` | List all permanent workflows in the index, with optional keyword, category, and tag filters. |
 | `workflow_get` | Retrieve a complete workflow definition by name, with global instructions prepended. |
 | `workflow_create` | Write a new permanent workflow YAML to the library. |
 | `workflow_create_temp` | Write a temporary one-shot workflow, indexed but excluded from list results. |
+| `workflow_delete` | Permanently remove a permanent workflow by name and optional version. |
 
 ### `workflow_list`
 
 List permanent workflows from the in-memory index.
 
+- Optional keyword `query` filter (case-insensitive substring across workflow name and description)
 - Optional category filter (case-insensitive substring match)
 - Optional tag filter (AND match — all listed tags must be present)
 - Set `includeTools: true` to surface the unique `server/tool` pairs used across each workflow's steps
 - Temporary workflows are excluded; results sorted by name then version descending
+- Empty results echo the applied filters with a hint to broaden
 
 ---
 
@@ -59,7 +62,7 @@ Retrieve a complete workflow by name, including the global instructions document
 
 Write a new permanent workflow to the library.
 
-- Workflow stored at `categories/<slugified-category>/<slugified-name>-workflow.yaml`
+- Workflow stored at `categories/<slugified-category>/<slugified-name>-<slugified-version>-workflow.yaml` — one file per `name@version`, so multiple versions coexist
 - Rejects if `name@version` already exists — bump the version to create a new revision
 - Server stamps `created_date` and `last_updated_date` automatically
 - Index and snapshot rebuilt after write; filesystem watcher also fires (idempotent, debounced)
@@ -73,6 +76,16 @@ Write a throwaway workflow to the `temp/` directory.
 - No conflict check — temp workflows are intentionally ephemeral and overwriteable
 - Indexed and accessible via `workflow_get` but excluded from `workflow_list` results
 - Useful for one-shot plans, short-lived scaffolding, or session-specific orchestration steps
+
+---
+
+### `workflow_delete`
+
+Permanently remove a permanent workflow from the library.
+
+- Semver-aware: omit `version` to delete the highest available match; specify a version to target one exactly
+- Only permanent workflows can be deleted — temporary workflows are rejected (they expire on their own)
+- Irreversible: the file is removed and the workflow no longer appears in `workflow_list` or `workflow_get`
 
 ---
 
@@ -100,7 +113,7 @@ Agent-friendly output:
 
 - `workflow_get` always includes `globalInstructions` alongside the workflow — no second call needed
 - Discriminated `source` field (`permanent` | `temp`) on every `workflow_get` response
-- Typed error contracts with structured `reason` codes (`not_found`, `version_not_found`, `already_exists`, `index_unavailable`) so callers can branch on error type rather than parsing messages
+- Typed error contracts with structured `reason` codes (`not_found`, `version_not_found`, `already_exists`, `temp_not_allowed`, `index_unavailable`) so callers can branch on error type rather than parsing messages
 - `workflow_list` with `includeTools: true` surfaces all MCP server/tool dependencies at a glance
 
 ---
