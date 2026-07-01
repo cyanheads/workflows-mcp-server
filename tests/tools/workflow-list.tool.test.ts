@@ -6,7 +6,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the service module before importing the tool
@@ -220,6 +220,78 @@ describe('workflowList', () => {
     expect(tools).toContain('notify-server/send_alert');
   });
 
+  // --- query filter (fix #4) ---
+
+  it('filters by query matching the workflow name', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const input = workflowList.input.parse({ query: 'pubmed' });
+    const result = workflowList.handler(input, ctx);
+    expect(result.totalCount).toBe(1);
+    expect(result.workflows[0].name).toBe('search-pubmed');
+  });
+
+  it('filters by query matching the description but not the name', async () => {
+    // A workflow whose distinctive token lives only in the description, not the name.
+    const catDir = path.join(dir, 'categories', 'ops');
+    await fs.mkdir(catDir, { recursive: true });
+    await fs.writeFile(
+      path.join(catDir, 'housekeeping.yaml'),
+      `${[
+        'name: housekeeping',
+        'version: "1.0.0"',
+        'description: Rotate the nightly backups and prune old logs',
+        'author: ops',
+        'category: Ops',
+        'steps:',
+        '  - server: s',
+        '    tool: t',
+      ].join('\n')}\n`,
+      'utf-8',
+    );
+    await svc.init();
+    vi.mocked(getWorkflowIndexService).mockReturnValue(svc);
+
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const input = workflowList.input.parse({ query: 'nightly' });
+    const result = workflowList.handler(input, ctx);
+    expect(result.totalCount).toBe(1);
+    expect(result.workflows[0].name).toBe('housekeeping');
+  });
+
+  it('query matching is case-insensitive', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const input = workflowList.input.parse({ query: 'PUBMED' });
+    const result = workflowList.handler(input, ctx);
+    expect(result.totalCount).toBe(1);
+    expect(result.workflows[0].name).toBe('search-pubmed');
+  });
+
+  it('combines query with the category filter (AND)', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    // 'branch' matches git-branch by name; category 'Git' keeps it — search-pubmed is excluded.
+    const input = workflowList.input.parse({ query: 'branch', category: 'Git' });
+    const result = workflowList.handler(input, ctx);
+    expect(result.totalCount).toBe(1);
+    expect(result.workflows[0].name).toBe('git-branch');
+  });
+
+  it('combines query with the tags filter (AND)', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    // Both git-* names match 'git', but only git-wrap-up carries the 'daily' tag.
+    const input = workflowList.input.parse({ query: 'git', tags: ['daily'] });
+    const result = workflowList.handler(input, ctx);
+    expect(result.totalCount).toBe(1);
+    expect(result.workflows[0].name).toBe('git-wrap-up');
+  });
+
+  it('treats an empty or whitespace-only query as no filter', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    expect(workflowList.handler(workflowList.input.parse({ query: '' }), ctx).totalCount).toBe(3);
+    expect(workflowList.handler(workflowList.input.parse({ query: '   ' }), ctx).totalCount).toBe(
+      3,
+    );
+  });
+
   // --- format ---
 
   it('formats output with workflow names and authors', () => {
@@ -233,9 +305,30 @@ describe('workflowList', () => {
     expect(text).toContain('test-author');
   });
 
-  it('formats empty result message', () => {
+  it('formats empty result with the total count', () => {
     const blocks = workflowList.format!({ workflows: [], totalCount: 0 });
     const text = (blocks[0] as { text: string }).text;
-    expect(text).toContain('No workflows found');
+    expect(text).toContain('**Total workflows:** 0');
+  });
+
+  // --- empty-result enrichment (fix #13) ---
+
+  it('emits an empty-result notice echoing the applied filters', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const input = workflowList.input.parse({ query: 'zzz-nomatch', tags: ['nonexistent-tag'] });
+    const result = workflowList.handler(input, ctx);
+    expect(result.totalCount).toBe(0);
+
+    const enrichment = getEnrichment(ctx) as { notice?: string };
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('zzz-nomatch');
+    expect(enrichment.notice).toContain('nonexistent-tag');
+  });
+
+  it('does not emit an empty-result notice when workflows match', () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const result = workflowList.handler(workflowList.input.parse({}), ctx);
+    expect(result.totalCount).toBe(3);
+    expect((getEnrichment(ctx) as { notice?: string }).notice).toBeUndefined();
   });
 });

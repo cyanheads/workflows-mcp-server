@@ -10,12 +10,19 @@ import { getWorkflowIndexService } from '@/services/workflow-index/workflow-inde
 export const workflowList = tool('workflow_list', {
   title: 'List Workflows',
   description:
-    'List all permanent workflows in the index. Supports optional filtering by category and tags (AND match). ' +
+    'List permanent workflows, optionally narrowed by category (case-insensitive substring), tags (AND match), ' +
+    'and a keyword query matched against workflow names and descriptions. Filters combine with AND. ' +
     'Set includeTools to true to surface the unique <server>/<tool> pairs used across each matching workflow. ' +
-    'Temporary workflows are excluded from results.',
+    'Temporary workflows are never included.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 
   input: z.object({
+    query: z
+      .string()
+      .optional()
+      .describe(
+        'Keyword filter matched case-insensitively against each workflow name and description. A workflow matches if either field contains the query. Omit to skip keyword filtering.',
+      ),
     category: z
       .string()
       .optional()
@@ -60,6 +67,15 @@ export const workflowList = tool('workflow_list', {
     totalCount: z.number().describe('Total number of matching workflows.'),
   }),
 
+  enrichment: {
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Guidance when no workflows match — echoes the applied filters and suggests how to broaden.',
+      ),
+  },
+
   errors: [
     {
       reason: 'index_unavailable',
@@ -77,7 +93,7 @@ export const workflowList = tool('workflow_list', {
       });
     }
 
-    const { category, tags, includeTools } = input;
+    const { query, category, tags, includeTools } = input;
     const results: {
       name: string;
       version: string;
@@ -93,6 +109,14 @@ export const workflowList = tool('workflow_list', {
       if (entry.isTemp) continue;
 
       const wf = entry.workflow;
+
+      // Keyword filter (case-insensitive substring across name OR description)
+      if (query?.trim()) {
+        const q = query.toLowerCase();
+        if (!wf.name.toLowerCase().includes(q) && !wf.description.toLowerCase().includes(q)) {
+          continue;
+        }
+      }
 
       // Category filter (case-insensitive substring)
       if (category?.trim()) {
@@ -142,7 +166,20 @@ export const workflowList = tool('workflow_list', {
       return 0;
     });
 
+    if (results.length === 0) {
+      const applied: string[] = [];
+      if (query?.trim()) applied.push(`query "${query.trim()}"`);
+      if (category?.trim()) applied.push(`category "${category.trim()}"`);
+      if (tags && tags.length > 0) applied.push(`tags [${tags.join(', ')}]`);
+      ctx.enrich.notice(
+        applied.length > 0
+          ? `No permanent workflows matched ${applied.join(', ')}. Remove or broaden a filter, or call again with no filters to list the full library.`
+          : 'No permanent workflows are available yet. Create one with workflow_create.',
+      );
+    }
+
     ctx.log.info('workflow_list completed', {
+      query: query ?? null,
       category: category ?? null,
       tags: tags ?? null,
       resultCount: results.length,
@@ -152,16 +189,13 @@ export const workflowList = tool('workflow_list', {
   },
 
   format(result) {
+    // Empty result: the applied-filter echo + broadening hint ride the enrichment notice trailer.
+    const lines: string[] = [`**Total workflows:** ${result.totalCount}`];
     if (result.totalCount === 0) {
-      return [
-        {
-          type: 'text',
-          text: `No workflows found matching the applied filters.\n**Total:** ${result.totalCount}`,
-        },
-      ];
+      return [{ type: 'text', text: lines.join('\n') }];
     }
 
-    const lines: string[] = [`**Total workflows:** ${result.totalCount}\n`];
+    lines.push('');
     for (const wf of result.workflows) {
       lines.push(`## ${wf.name} v${wf.version}`);
       lines.push(`**Author:** ${wf.author}`);

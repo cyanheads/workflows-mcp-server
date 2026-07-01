@@ -199,7 +199,7 @@ describe('workflowGet', () => {
       source: 'permanent',
     });
     const text = (blocks[0] as { text: string }).text;
-    expect(text).toContain('No global_instructions.md');
+    expect(text).toContain('No global execution guidance');
   });
 
   it('renders **Temporary:** yes when temporary flag is present', () => {

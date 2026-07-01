@@ -20,7 +20,7 @@ const StepInputSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        'Key-value parameter map. May include {{input.foo}} placeholders for the consuming agent to resolve.',
+        'Key-value parameter map. May include {{input.foo}} placeholders, stored verbatim and resolved at execution time.',
       ),
     forEach: z
       .string()
@@ -32,10 +32,11 @@ const StepInputSchema = z
 export const workflowCreate = tool('workflow_create', {
   title: 'Create Workflow',
   description:
-    'Write a new permanent workflow YAML to the categories/<slugified-category>/ directory. ' +
-    'Rejects if name@version already exists in the index — use a different version to update. ' +
-    'The server stamps created_date and last_updated_date automatically. ' +
-    'Rebuilds the index after writing. Template placeholders in params ({{input.foo}}) are stored verbatim.',
+    'Create and durably store a new permanent workflow. ' +
+    'Rejects the write when the same name and version already exist — bump the version to store a revision alongside the existing one. ' +
+    'Created and last-updated dates are stamped automatically. ' +
+    'Template placeholders like {{input.foo}} in step params are stored verbatim, not resolved. ' +
+    'New workflows appear in workflow_list and are retrievable with workflow_get.',
   annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
 
   input: z.object({
@@ -55,7 +56,7 @@ export const workflowCreate = tool('workflow_create', {
       .string()
       .min(1)
       .describe(
-        'Category name (e.g. "Git Operations"). Used to determine the storage directory. Must not be blank or whitespace-only.',
+        'Category name (e.g. "Git Operations") used to group the workflow. Must not be blank or whitespace-only.',
       ),
     tags: z.array(z.string()).optional().describe('Free-form tags for filtering.'),
     steps: z

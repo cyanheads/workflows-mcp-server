@@ -40,15 +40,15 @@ const WorkflowOutputSchema = z.object({
         'A single step in the workflow: server, tool, and optional params/metadata.',
       ),
     )
-    .describe('Ordered steps the consuming agent should execute.'),
+    .describe('Ordered steps to execute in sequence.'),
 });
 
 export const workflowGet = tool('workflow_get', {
   title: 'Get Workflow',
   description:
-    'Retrieve a complete workflow definition by name. When version is omitted, returns the highest semver match. ' +
-    'Also returns the global instructions text from global_instructions.md (null when the file is absent). ' +
-    'Template placeholders like {{input.foo}} in step params are opaque strings — the server returns them verbatim. ' +
+    'Retrieve a complete workflow definition by name. When version is omitted, returns the highest available version. ' +
+    'Also returns optional global execution guidance to apply when running the workflow, or null when none is configured. ' +
+    'Template placeholders like {{input.foo}} in step params are opaque strings, returned verbatim. ' +
     'Temporary workflows are accessible here but excluded from workflow_list.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 
@@ -68,7 +68,7 @@ export const workflowGet = tool('workflow_get', {
       .string()
       .nullable()
       .describe(
-        'Content of the global_instructions.md file. Null when the file does not exist. Apply these instructions when executing the workflow.',
+        'Optional global execution guidance to apply when running the workflow, or null when none is configured.',
       ),
     source: z
       .enum(['permanent', 'temp'])
@@ -160,7 +160,7 @@ export const workflowGet = tool('workflow_get', {
       lines.push(result.globalInstructions);
       lines.push('');
     } else {
-      lines.push('> **Note:** No global_instructions.md file found.');
+      lines.push('> **Note:** No global execution guidance configured.');
       lines.push('');
     }
 

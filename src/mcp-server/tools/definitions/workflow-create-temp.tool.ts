@@ -20,7 +20,7 @@ const StepInputSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        'Key-value parameter map. May include {{input.foo}} placeholders for the consuming agent to resolve.',
+        'Key-value parameter map. May include {{input.foo}} placeholders, stored verbatim and resolved at execution time.',
       ),
     forEach: z
       .string()
@@ -32,10 +32,10 @@ const StepInputSchema = z
 export const workflowCreateTemp = tool('workflow_create_temp', {
   title: 'Create Temporary Workflow',
   description:
-    'Write a temporary workflow to the temp/ directory. ' +
-    'Temporary workflows are indexed and retrievable via workflow_get but excluded from workflow_list results. ' +
-    'No conflict check — temp is throwaway. Useful for one-shot plans, short-lived scaffolding, or workflows not intended for the permanent library. ' +
-    'The server stamps created_date and last_updated_date automatically.',
+    'Create a temporary workflow for one-shot plans, short-lived scaffolding, or drafts not meant for the permanent library. ' +
+    'Temporary workflows are retrievable with workflow_get but never appear in workflow_list. ' +
+    'Writing the same name and version overwrites the previous draft — there is no conflict check. ' +
+    'Created and last-updated dates are stamped automatically.',
   annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
 
   input: z.object({
