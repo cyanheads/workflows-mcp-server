@@ -79,7 +79,8 @@ describe('workflowCreate', () => {
 
     const content = await fs.readFile(result.filePath, 'utf-8');
     expect(content).toContain('name: Standard Deploy');
-    expect(content).toContain('version: "1.0.0"');
+    // Emitted by the yaml serializer — a semver string round-trips unquoted.
+    expect(content).toContain('version: 1.0.0');
     expect(content).toContain('run_deploy');
   });
 
@@ -129,6 +130,68 @@ describe('workflowCreate', () => {
   it('throws invalid_input when the name slugifies to empty', async () => {
     const ctx = createMockContext({ errors: workflowCreate.errors });
     const input = workflowCreate.input.parse({ ...VALID_INPUT, name: '!!!', version: '4.0.0' });
+    await expect(workflowCreate.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'invalid_input' },
+    });
+  });
+
+  // GH #7 — a duplicate name@version under a different category must conflict, not overwrite.
+  it('throws already_exists for a duplicate name@version in a different category (GH #7)', async () => {
+    const ctx1 = createMockContext({ errors: workflowCreate.errors });
+    await workflowCreate.handler(
+      workflowCreate.input.parse({ ...VALID_INPUT, category: 'Alpha Category' }),
+      ctx1,
+    );
+
+    const ctx2 = createMockContext({ errors: workflowCreate.errors });
+    await expect(
+      workflowCreate.handler(
+        workflowCreate.input.parse({ ...VALID_INPUT, category: 'Beta Category' }),
+        ctx2,
+      ),
+    ).rejects.toMatchObject({
+      code: JsonRpcErrorCode.Conflict,
+      data: { reason: 'already_exists' },
+    });
+
+    // Only the first file was written; the index holds a single entry for the key.
+    expect(svc.findByName('Standard Deploy')).toHaveLength(1);
+  });
+
+  // GH #8 — a successful create must round-trip through the same parser/indexer used at
+  // startup. Coercion-prone strings previously emitted as booleans/numbers and vanished.
+  it('round-trips coercion-prone strings and params keys through the index (GH #8)', async () => {
+    const ctx = createMockContext({ errors: workflowCreate.errors });
+    const input = workflowCreate.input.parse({
+      ...VALID_INPUT,
+      name: 'Coercion Edge',
+      version: '5.0.0',
+      description: 'true',
+      author: '123',
+      tags: ['false', '123'],
+      steps: [{ server: 'srv', tool: 'tool', params: { 'bad: key': 'value' } }],
+    });
+    const result = await workflowCreate.handler(input, ctx);
+
+    const entry = svc.index.get(result.key);
+    expect(entry).toBeDefined();
+    expect(entry?.workflow.description).toBe('true');
+    expect(entry?.workflow.author).toBe('123');
+    expect(entry?.workflow.tags).toEqual(['false', '123']);
+    expect(entry?.workflow.steps[0]?.params).toEqual({ 'bad: key': 'value' });
+  });
+
+  // GH #9 — a start-anchored regex accepted "1.0.0junk"; full semver validation rejects it.
+  it('rejects an invalid semver version at input validation (GH #9)', () => {
+    const parsed = workflowCreate.input.safeParse({ ...VALID_INPUT, version: '1.0.0junk' });
+    expect(parsed.success).toBe(false);
+  });
+
+  // GH #10 — a category with no slug-safe characters would write into the categories/ root.
+  it('throws invalid_input when the category slugifies to empty (GH #10)', async () => {
+    const ctx = createMockContext({ errors: workflowCreate.errors });
+    const input = workflowCreate.input.parse({ ...VALID_INPUT, category: '!!!', version: '6.0.0' });
     await expect(workflowCreate.handler(input, ctx)).rejects.toMatchObject({
       code: JsonRpcErrorCode.ValidationError,
       data: { reason: 'invalid_input' },

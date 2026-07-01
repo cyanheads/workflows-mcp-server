@@ -165,6 +165,32 @@ describe('WorkflowIndexService', () => {
     expect(svc.index.size).toBe(0);
   });
 
+  // GH #9 — an invalid-semver file must be skipped at build so latest-version lookup can
+  // never feed an invalid version to semver.rcompare (which throws "Invalid Version").
+  it('skips a hand-placed invalid-semver file and finds the valid version (GH #9)', async () => {
+    const catDir = path.join(dir, 'categories', 'testing');
+    await fs.mkdir(catDir, { recursive: true });
+    await fs.writeFile(
+      path.join(catDir, 'valid.yaml'),
+      makeWorkflowYaml({ name: 'Semver Edge', version: '1.0.0' }),
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(catDir, 'invalid.yaml'),
+      makeWorkflowYaml({ name: 'Semver Edge', version: '1.0.0junk' }),
+      'utf-8',
+    );
+
+    await svc.init();
+
+    expect(svc.index.has('Semver Edge@1.0.0')).toBe(true);
+    expect(svc.index.has('Semver Edge@1.0.0junk')).toBe(false);
+
+    // Latest-version lookup no longer crashes and returns the valid version.
+    const entry = svc.findWorkflow('Semver Edge');
+    expect(entry?.workflow.version).toBe('1.0.0');
+  });
+
   it('writes index snapshot to _index.json', async () => {
     const catDir = path.join(dir, 'categories', 'testing');
     await fs.mkdir(catDir, { recursive: true });
@@ -437,6 +463,47 @@ describe('WorkflowIndexService', () => {
     const err = await svc.writePermanent(wf).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as { _reason?: string })._reason).toBe('already_exists');
+  });
+
+  // --- cross-category duplicate guard (regression: GH #7) ---
+
+  it('rejects a permanent duplicate name@version under a different category (GH #7)', async () => {
+    await svc.init();
+    const base = {
+      name: 'Audit Workflow',
+      version: '1.0.0',
+      description: 'audit',
+      author: 'me',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    };
+    await svc.writePermanent({ ...base, category: 'Alpha Category' });
+
+    const err = await svc
+      .writePermanent({ ...base, category: 'Beta Category' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('already_exists');
+
+    // No second file written; a single index entry remains for the key.
+    expect(svc.findByName('Audit Workflow')).toHaveLength(1);
+  });
+
+  // GH #10 — a provided category that slugifies empty would drop the file into the
+  // categories/ root; the write path must reject it like an empty name slug.
+  it('rejects a permanent workflow whose category slugifies to empty (GH #10)', async () => {
+    await svc.init();
+    const err = await svc
+      .writePermanent({
+        name: 'Category Edge',
+        version: '1.0.0',
+        description: 'empty category slug',
+        author: 'me',
+        category: '!!!',
+        steps: [{ server: 'srv', tool: 'tool' }],
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('invalid_category');
   });
 
   // --- empty-slug guard (regression: fix #8) ---

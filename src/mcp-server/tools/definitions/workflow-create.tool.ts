@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import * as semver from 'semver';
 import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
 import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
 
@@ -44,8 +45,10 @@ export const workflowCreate = tool('workflow_create', {
       .describe('Workflow name (human-readable, e.g. "Standard Git Wrap-up").'),
     version: z
       .string()
-      .regex(/^\d+\.\d+\.\d+/)
-      .describe('Semver version string (e.g. "1.0.0").'),
+      .refine((v) => semver.valid(v) !== null, {
+        message: 'Version must be a valid semantic version (e.g. "1.0.0").',
+      })
+      .describe('Semver version string (e.g. "1.0.0"). Must be valid semver.'),
     description: z.string().min(1).describe('One-line description of what the workflow does.'),
     author: z.string().min(1).describe('Author name or team.'),
     category: z
@@ -73,9 +76,9 @@ export const workflowCreate = tool('workflow_create', {
     {
       reason: 'invalid_input',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'A field passed schema validation but is semantically invalid: a blank/whitespace-only category, or a name that slugifies to empty or exceeds the filename length limit.',
+      when: 'A field passed schema validation but is semantically invalid: a blank/whitespace-only category, a category that slugifies to empty, or a name that slugifies to empty or exceeds the filename length limit.',
       recovery:
-        'Provide a non-blank category and a workflow name that contains alphanumeric characters and stays under 200 characters after slugification.',
+        'Provide a category and workflow name that each contain alphanumeric characters, and keep the name under 200 characters after slugification.',
     },
     {
       reason: 'already_exists',
@@ -135,9 +138,12 @@ export const workflowCreate = tool('workflow_create', {
           { ...ctx.recoveryFor('already_exists') },
         );
       }
-      if (err instanceof Error && (reason === 'name_too_long' || reason === 'invalid_name')) {
-        // Name-slug validation failures are bad input, not server faults — surface as
-        // ValidationError with the service's message (no path leak).
+      if (
+        err instanceof Error &&
+        (reason === 'name_too_long' || reason === 'invalid_name' || reason === 'invalid_category')
+      ) {
+        // Slug validation failures (name or category) are bad input, not server faults —
+        // surface as ValidationError with the service's message (no path leak).
         throw ctx.fail('invalid_input', err.message, { ...ctx.recoveryFor('invalid_input') });
       }
       ctx.log.error(

@@ -124,6 +124,12 @@ describe('workflowCreateTemp', () => {
     });
   });
 
+  // GH #9 — full semver validation rejects suffixed versions like "1.0.0junk".
+  it('rejects an invalid semver version at input validation (GH #9)', () => {
+    const parsed = workflowCreateTemp.input.safeParse({ ...VALID_INPUT, version: '1.0.0junk' });
+    expect(parsed.success).toBe(false);
+  });
+
   it('preserves forEach field in the written YAML', async () => {
     const ctx = createMockContext({ errors: workflowCreateTemp.errors });
     const input = workflowCreateTemp.input.parse({

@@ -12,7 +12,7 @@ import type { AppConfig } from '@cyanheads/mcp-ts-core/config';
 import type { StorageService } from '@cyanheads/mcp-ts-core/storage';
 import { logger } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { IndexSnapshot, ParsedWorkflow, WorkflowEntry, WorkflowIndex } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -31,7 +31,11 @@ const StepSchema = z.object({
 
 const WorkflowSchema = z.object({
   name: z.string().min(1),
-  version: z.string().regex(/^\d+\.\d+\.\d+/),
+  // Full semver validation, not a start-anchored regex — a suffix like "1.0.0junk" must
+  // fail here so it is skipped at index build and never reaches semver.rcompare.
+  version: z.string().refine((v) => semver.valid(v) !== null, {
+    message: 'version must be a valid semantic version',
+  }),
   description: z.string().min(1),
   author: z.string().min(1),
   category: z.string().min(1).optional(),
@@ -179,11 +183,31 @@ export class WorkflowIndexService {
   async writePermanent(workflow: ParsedWorkflow): Promise<string> {
     const key = `${workflow.name}@${workflow.version}`;
 
+    // Reject cross-category duplicates. The index key is category-independent, so a second
+    // file with the same name@version under a different category would collapse to one key
+    // at rebuild (last-write-wins). The `wx` flag below only guards same-path collisions.
+    // A temp entry with this key does not block a permanent create.
+    const existing = this._index.get(key);
+    if (existing && !existing.isTemp) {
+      throw Object.assign(new Error(`Workflow "${key}" already exists`), {
+        _reason: 'already_exists',
+      });
+    }
+
     const categorySlug = slugify(workflow.category ?? 'uncategorized');
     const nameSlug = slugify(workflow.name);
     const versionSlug = slugify(workflow.version);
 
     assertValidNameSlug(workflow.name, nameSlug);
+    // A provided category that slugifies empty (e.g. "!!!") would drop the file into the
+    // categories/ root with no subdirectory — reject it as invalid input, mirroring the
+    // name-slug guard. The default 'uncategorized' fallback (category omitted) stays safe.
+    if (workflow.category !== undefined && !categorySlug) {
+      throw Object.assign(
+        new Error(`Workflow category "${workflow.category}" produces an empty slug`),
+        { _reason: 'invalid_category' },
+      );
+    }
 
     const categoryDir = path.join(this.workflowsDir, 'categories', categorySlug);
     // Include version in filename so multiple versions coexist on disk.
@@ -192,7 +216,10 @@ export class WorkflowIndexService {
     await fs.mkdir(categoryDir, { recursive: true });
     try {
       // `wx` flag fails atomically if the file already exists, preventing TOCTOU races.
-      await fs.writeFile(filePath, buildYaml(workflow), { encoding: 'utf-8', flag: 'wx' });
+      await fs.writeFile(filePath, stringifyYaml(workflow, { lineWidth: 0 }), {
+        encoding: 'utf-8',
+        flag: 'wx',
+      });
     } catch (err: unknown) {
       if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'EEXIST') {
         throw Object.assign(new Error(`Workflow "${key}" already exists`), {
@@ -220,7 +247,7 @@ export class WorkflowIndexService {
 
     // Include version in filename so different versions are distinct files.
     const filePath = path.join(tempDir, `${nameSlug}-${versionSlug}-workflow.yaml`);
-    await fs.writeFile(filePath, buildYaml(workflow), 'utf-8');
+    await fs.writeFile(filePath, stringifyYaml(workflow, { lineWidth: 0 }), 'utf-8');
 
     await this.rebuild();
     return filePath;
@@ -375,59 +402,6 @@ export class WorkflowIndexService {
       logWarn(`Debounced rebuild failed: ${String(err)}`);
     });
   }
-}
-
-// ---------------------------------------------------------------------------
-// YAML serialisation helper
-// ---------------------------------------------------------------------------
-
-function buildYaml(workflow: ParsedWorkflow): string {
-  const lines: string[] = [];
-
-  lines.push(`name: ${quote(workflow.name)}`);
-  lines.push(`version: "${workflow.version}"`);
-  lines.push(`description: ${quote(workflow.description)}`);
-  lines.push(`author: ${quote(workflow.author)}`);
-  if (workflow.category) lines.push(`category: ${quote(workflow.category)}`);
-  if (workflow.tags && workflow.tags.length > 0) {
-    lines.push('tags:');
-    for (const tag of workflow.tags) lines.push(`  - ${quote(tag)}`);
-  }
-  if (workflow.created_date) lines.push(`created_date: "${workflow.created_date}"`);
-  if (workflow.last_updated_date) lines.push(`last_updated_date: "${workflow.last_updated_date}"`);
-  if (workflow.temporary) lines.push('temporary: true');
-
-  lines.push('steps:');
-  for (const step of workflow.steps) {
-    lines.push(`  - server: ${quote(step.server)}`);
-    lines.push(`    tool: ${quote(step.tool)}`);
-    if (step.action) lines.push(`    action: ${quote(step.action)}`);
-    if (step.description) lines.push(`    description: ${quote(step.description)}`);
-    if (step.name) lines.push(`    name: ${quote(step.name)}`);
-    if (step.forEach) lines.push(`    forEach: ${quote(step.forEach)}`);
-    if (step.params && Object.keys(step.params).length > 0) {
-      lines.push('    params:');
-      for (const [k, v] of Object.entries(step.params)) {
-        lines.push(`      ${k}: ${yamlValue(v)}`);
-      }
-    }
-  }
-
-  return `${lines.join('\n')}\n`;
-}
-
-function quote(s: string): string {
-  if (/[:#[\]{},&*?|<>=!%@`\\]|^[-?]/.test(s) || s.includes('\n')) {
-    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-  }
-  return s;
-}
-
-function yamlValue(v: unknown): string {
-  if (typeof v === 'string') return quote(v);
-  if (typeof v === 'boolean' || typeof v === 'number') return String(v);
-  if (v === null) return 'null';
-  return JSON.stringify(v);
 }
 
 // ---------------------------------------------------------------------------
