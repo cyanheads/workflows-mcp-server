@@ -6,7 +6,9 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import { slugify, WorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
 
 // ---------------------------------------------------------------------------
@@ -45,6 +47,20 @@ function makeWorkflowYaml(overrides: Record<string, unknown> = {}): string {
 
 async function mkTmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'workflows-test-'));
+}
+
+/** Poll a sync/async predicate until it returns true or the timeout elapses. */
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 2000,
+  stepMs = 20,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return true;
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+  return predicate();
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +222,45 @@ describe('WorkflowIndexService', () => {
     };
     expect(snapshot.count).toBe(1);
     expect(Object.keys(snapshot.entries)).toContain('test-workflow@1.0.0');
+  });
+
+  // GH #11 — a missing WORKFLOWS_DIR must be created at init so the snapshot lands and the
+  // watcher can attach, instead of leaving the server "ready" but silently un-watched. Live
+  // watcher event delivery is timing-dependent under parallel FS load, so it's proven in the
+  // field-test; here we lock the deterministic startup effects that were broken before the fix.
+  it('creates a missing workflow root, writes the snapshot, and reports ready (GH #11)', async () => {
+    const missingRoot = path.join(dir, 'nested', 'missing-root');
+    // Precondition: the root does not exist yet.
+    await expect(fs.stat(missingRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+
+    const missingSvc = new WorkflowIndexService(
+      missingRoot,
+      path.join(missingRoot, 'global_instructions.md'),
+      10,
+    );
+    try {
+      await missingSvc.init();
+
+      // Root created and service ready — no ENOENT swallowed at startup.
+      expect((await fs.stat(missingRoot)).isDirectory()).toBe(true);
+      expect(missingSvc.ready).toBe(true);
+
+      // Snapshot lands (would ENOENT on <root>/_index.json before the fix — one of the two
+      // documented symptoms). The write is async fire-and-forget, so poll for it.
+      const snapshotPath = path.join(missingRoot, '_index.json');
+      const snapshotWritten = await waitFor(() =>
+        fs.stat(snapshotPath).then(
+          () => true,
+          () => false,
+        ),
+      );
+      expect(snapshotWritten).toBe(true);
+
+      const snapshot = JSON.parse(await fs.readFile(snapshotPath, 'utf-8')) as { count: number };
+      expect(snapshot.count).toBe(0);
+    } finally {
+      missingSvc.shutdown();
+    }
   });
 
   // --- semver lookup ---
@@ -568,5 +623,27 @@ describe('WorkflowIndexService', () => {
     for (const m of matches) {
       expect(m.workflow.name).toBe('test-workflow');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bundled seed workflows
+// ---------------------------------------------------------------------------
+
+describe('bundled seed workflows', () => {
+  // GH #12 — the shipped research-visualization workflow must declare a category so it stops
+  // warning at boot and matches category-filtered workflow_list. The slug must equal the parent
+  // directory to stay in-place-consistent with the write path.
+  it('research-visualization workflow declares a category matching its directory (GH #12)', async () => {
+    const filePath = fileURLToPath(
+      new URL(
+        '../../workflows-yaml/categories/research-visualization/pubmed-research-with-cosmograph-visualization-workflow.yaml',
+        import.meta.url,
+      ),
+    );
+    const parsed = parseYaml(await fs.readFile(filePath, 'utf-8')) as { category?: string };
+
+    expect(parsed.category).toBeDefined();
+    expect(slugify(parsed.category ?? '')).toBe('research-visualization');
   });
 });

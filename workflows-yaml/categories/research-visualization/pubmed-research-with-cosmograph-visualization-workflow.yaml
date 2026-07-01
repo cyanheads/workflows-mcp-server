@@ -2,6 +2,7 @@ name: Dynamic PubMed Research & Visualization Synthesis
 version: 4.0.0
 description: An advanced, adaptive workflow for executing sophisticated PubMed research and synthesizing findings into a real-time, interactive knowledge graph. This version emphasizes a structured, iterative research loop, data enrichment, and strategic analysis to build a deeply contextualized visual landscape of the literature.
 author: cyanheads
+category: Research Visualization
 tags:
   - pubmed
   - cosmograph

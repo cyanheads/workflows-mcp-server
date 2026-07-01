@@ -136,6 +136,12 @@ export class WorkflowIndexService {
 
   /** Initialize: build initial index and start filesystem watcher. */
   async init(): Promise<void> {
+    // Ensure the workflow root exists before the first rebuild and watch. On a fresh install the
+    // configured WORKFLOWS_DIR may not exist yet; without this, writeSnapshot() ENOENTs on
+    // <root>/_index.json and fs.watch() throws ENOENT so the watcher exits — leaving the server
+    // "ready" but silently un-watched. Creating it up front mirrors the lazy mkdir in
+    // writePermanent()/writeTemp().
+    await fs.mkdir(this.workflowsDir, { recursive: true });
     await this.rebuild();
     this.startWatcher();
   }
