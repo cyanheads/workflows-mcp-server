@@ -11,7 +11,10 @@
     "ignorePatterns": []
   },
   "outdated": {
-    "allowlist": []
+    "allowlist": ["@types/node"]
+  },
+  "packaging": {
+    "pluginManifests": true
   },
   "skillVersions": {
     "ignore": ["migrate-mcp-ts-template"]
