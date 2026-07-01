@@ -259,6 +259,45 @@ export class WorkflowIndexService {
     return filePath;
   }
 
+  /**
+   * Delete an indexed permanent workflow file and rebuild the index.
+   *
+   * The target is resolved through {@link findWorkflow}, so only an already-indexed file is ever
+   * removed — never an arbitrary caller-supplied path. Throws a tagged error (`_reason`) for the
+   * two domain failures: `not_found` (no entry matches the name, or the name/version pair) and
+   * `temp_not_allowed` (the resolved entry is a temp workflow — temp workflows are session-scoped
+   * and expire on their own, so they are out of scope for deletion). Filesystem errors from the
+   * unlink propagate raw for the caller to classify.
+   *
+   * @returns The deleted workflow's canonical name and version.
+   */
+  async deleteWorkflow(name: string, version?: string): Promise<{ name: string; version: string }> {
+    const entry = this.findWorkflow(name, version);
+    if (!entry) {
+      throw Object.assign(
+        new Error(`No indexed workflow "${name}${version ? `@${version}` : ''}"`),
+        {
+          _reason: 'not_found',
+        },
+      );
+    }
+    if (entry.isTemp) {
+      throw Object.assign(
+        new Error(
+          `Workflow "${name}${version ? `@${version}` : ''}" is temporary and cannot be deleted`,
+        ),
+        { _reason: 'temp_not_allowed' },
+      );
+    }
+
+    await fs.unlink(entry.filePath);
+
+    // Immediately rebuild so the index reflects the removal for the caller.
+    // The watcher will also fire and trigger a redundant rebuild — that's fine (idempotent).
+    await this.rebuild();
+    return { name: entry.workflow.name, version: entry.workflow.version };
+  }
+
   // --- Internal ---
 
   private async rebuild(): Promise<void> {

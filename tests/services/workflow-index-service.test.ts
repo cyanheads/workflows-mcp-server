@@ -465,6 +465,69 @@ describe('WorkflowIndexService', () => {
     expect(entry?.isTemp).toBe(true);
   });
 
+  // --- deleteWorkflow ---
+
+  it('deletes a permanent workflow file and removes it from the index', async () => {
+    await svc.init();
+    const filePath = await svc.writePermanent({
+      name: 'delete-me',
+      version: '1.0.0',
+      description: 'to be deleted',
+      author: 'me',
+      category: 'testing',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    });
+    expect(svc.index.has('delete-me@1.0.0')).toBe(true);
+
+    const deleted = await svc.deleteWorkflow('delete-me', '1.0.0');
+    expect(deleted).toEqual({ name: 'delete-me', version: '1.0.0' });
+    expect(svc.index.has('delete-me@1.0.0')).toBe(false);
+    await expect(fs.stat(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('deleteWorkflow deletes the latest version when version is omitted', async () => {
+    await svc.init();
+    const base = {
+      name: 'multi-del',
+      description: 'multi version delete',
+      author: 'me',
+      category: 'testing',
+      steps: [{ server: 'srv', tool: 'tool' }],
+    };
+    await svc.writePermanent({ ...base, version: '1.0.0' });
+    await svc.writePermanent({ ...base, version: '2.0.0' });
+
+    const deleted = await svc.deleteWorkflow('multi-del');
+    expect(deleted.version).toBe('2.0.0');
+    expect(svc.index.has('multi-del@2.0.0')).toBe(false);
+    expect(svc.index.has('multi-del@1.0.0')).toBe(true);
+  });
+
+  it('deleteWorkflow throws tagged not_found for an unknown name', async () => {
+    await svc.init();
+    const err = await svc.deleteWorkflow('nope').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('not_found');
+  });
+
+  it('deleteWorkflow throws tagged temp_not_allowed for a temp workflow', async () => {
+    await svc.init();
+    await svc.writeTemp({
+      name: 'temp-del',
+      version: '1.0.0',
+      description: 'temp',
+      author: 'agent',
+      temporary: true,
+      steps: [{ server: 'srv', tool: 'tool' }],
+    });
+
+    const err = await svc.deleteWorkflow('temp-del').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('temp_not_allowed');
+    // Temp entry is untouched.
+    expect(svc.index.has('temp-del@1.0.0')).toBe(true);
+  });
+
   // --- multi-version coexistence (regression: fix #1) ---
 
   it('preserves all 3 version files on disk when creating 3 versions of the same workflow', async () => {
