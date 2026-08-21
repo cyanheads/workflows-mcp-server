@@ -95,74 +95,74 @@ describe('workflowList', () => {
 
   // --- happy paths ---
 
-  it('returns all permanent workflows when no filters are applied', () => {
+  it('returns all permanent workflows when no filters are applied', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({});
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(3);
     expect(result.workflows).toHaveLength(3);
     // Temp workflow is excluded
     expect(result.workflows.every((w) => w.name !== 'temp-plan')).toBe(true);
   });
 
-  it('filters by category (case-insensitive substring)', () => {
+  it('filters by category (case-insensitive substring)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ category: 'git' });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(2);
     expect(result.workflows.every((w) => w.category?.toLowerCase().includes('git'))).toBe(true);
   });
 
-  it('filters by tags (AND match)', () => {
+  it('filters by tags (AND match)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ tags: ['git', 'daily'] });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(1);
-    expect(result.workflows[0].name).toBe('git-wrap-up');
+    expect(result.workflows[0]!.name).toBe('git-wrap-up');
   });
 
-  it('returns empty array when no workflows match filters', () => {
+  it('returns empty array when no workflows match filters', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ tags: ['nonexistent-tag'] });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(0);
     expect(result.workflows).toHaveLength(0);
   });
 
-  it('tag filtering is case-insensitive (regression: fix #4)', () => {
+  it('tag filtering is case-insensitive (regression: fix #4)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     // Stored tags are lowercase "git" — filter with uppercase "GIT" should still match
     const inputUpper = workflowList.input.parse({ tags: ['GIT'] });
-    const resultUpper = workflowList.handler(inputUpper, ctx);
+    const resultUpper = await workflowList.handler(inputUpper, ctx);
     expect(resultUpper.totalCount).toBe(2);
 
     const inputMixed = workflowList.input.parse({ tags: ['Git', 'Daily'] });
-    const resultMixed = workflowList.handler(inputMixed, ctx);
+    const resultMixed = await workflowList.handler(inputMixed, ctx);
     expect(resultMixed.totalCount).toBe(1);
-    expect(resultMixed.workflows[0].name).toBe('git-wrap-up');
+    expect(resultMixed.workflows[0]!.name).toBe('git-wrap-up');
   });
 
-  it('includes tools list when includeTools is true', () => {
+  it('includes tools list when includeTools is true', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ category: 'git', includeTools: true });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     for (const wf of result.workflows) {
       expect(Array.isArray(wf.tools)).toBe(true);
       expect(wf.tools!.every((t) => t.includes('/'))).toBe(true);
     }
   });
 
-  it('does not include tools list when includeTools is false', () => {
+  it('does not include tools list when includeTools is false', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ includeTools: false });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.workflows.every((w) => w.tools === undefined)).toBe(true);
   });
 
-  it('ignores blank category string (whitespace only)', () => {
+  it('ignores blank category string (whitespace only)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ category: '   ' });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     // Blank category is treated as "no filter" — returns all permanent
     expect(result.totalCount).toBe(3);
   });
@@ -175,11 +175,11 @@ describe('workflowList', () => {
     expect(() => workflowList.handler(input, ctx)).toThrow();
   });
 
-  it('returns workflow when tag filter uses an empty tags array (no filter applied)', () => {
+  it('returns workflow when tag filter uses an empty tags array (no filter applied)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     // tags: [] means no tag filter — all permanent workflows should return
     const input = workflowList.input.parse({ tags: [] });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(3);
   });
 
@@ -211,9 +211,9 @@ describe('workflowList', () => {
 
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ category: 'Dedup Test', includeTools: true });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.workflows).toHaveLength(1);
-    const tools = result.workflows[0].tools!;
+    const tools = result.workflows[0]!.tools!;
     // Should deduplicate: only 2 unique server/tool pairs, not 3
     expect(tools).toHaveLength(2);
     expect(tools).toContain('search-server/search_articles');
@@ -222,12 +222,12 @@ describe('workflowList', () => {
 
   // --- query filter (fix #4) ---
 
-  it('filters by query matching the workflow name', () => {
+  it('filters by query matching the workflow name', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ query: 'pubmed' });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(1);
-    expect(result.workflows[0].name).toBe('search-pubmed');
+    expect(result.workflows[0]!.name).toBe('search-pubmed');
   });
 
   it('filters by query matching the description but not the name', async () => {
@@ -253,53 +253,55 @@ describe('workflowList', () => {
 
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ query: 'nightly' });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(1);
-    expect(result.workflows[0].name).toBe('housekeeping');
+    expect(result.workflows[0]!.name).toBe('housekeeping');
   });
 
-  it('query matching is case-insensitive', () => {
+  it('query matching is case-insensitive', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ query: 'PUBMED' });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(1);
-    expect(result.workflows[0].name).toBe('search-pubmed');
+    expect(result.workflows[0]!.name).toBe('search-pubmed');
   });
 
-  it('combines query with the category filter (AND)', () => {
+  it('combines query with the category filter (AND)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     // 'branch' matches git-branch by name; category 'Git' keeps it — search-pubmed is excluded.
     const input = workflowList.input.parse({ query: 'branch', category: 'Git' });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(1);
-    expect(result.workflows[0].name).toBe('git-branch');
+    expect(result.workflows[0]!.name).toBe('git-branch');
   });
 
-  it('combines query with the tags filter (AND)', () => {
+  it('combines query with the tags filter (AND)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     // Both git-* names match 'git', but only git-wrap-up carries the 'daily' tag.
     const input = workflowList.input.parse({ query: 'git', tags: ['daily'] });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(1);
-    expect(result.workflows[0].name).toBe('git-wrap-up');
+    expect(result.workflows[0]!.name).toBe('git-wrap-up');
   });
 
-  it('treats an empty or whitespace-only query as no filter', () => {
+  it('treats an empty or whitespace-only query as no filter', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
-    expect(workflowList.handler(workflowList.input.parse({ query: '' }), ctx).totalCount).toBe(3);
-    expect(workflowList.handler(workflowList.input.parse({ query: '   ' }), ctx).totalCount).toBe(
-      3,
-    );
+    expect(
+      (await workflowList.handler(workflowList.input.parse({ query: '' }), ctx)).totalCount,
+    ).toBe(3);
+    expect(
+      (await workflowList.handler(workflowList.input.parse({ query: '   ' }), ctx)).totalCount,
+    ).toBe(3);
   });
 
   // --- format ---
 
-  it('formats output with workflow names and authors', () => {
+  it('formats output with workflow names and authors', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({});
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     const blocks = workflowList.format!(result);
-    expect(blocks[0].type).toBe('text');
+    expect(blocks[0]!.type).toBe('text');
     const text = (blocks[0] as { text: string }).text;
     expect(text).toContain('git-wrap-up');
     expect(text).toContain('test-author');
@@ -313,10 +315,10 @@ describe('workflowList', () => {
 
   // --- empty-result enrichment (fix #13) ---
 
-  it('emits an empty-result notice echoing the applied filters', () => {
+  it('emits an empty-result notice echoing the applied filters', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const input = workflowList.input.parse({ query: 'zzz-nomatch', tags: ['nonexistent-tag'] });
-    const result = workflowList.handler(input, ctx);
+    const result = await workflowList.handler(input, ctx);
     expect(result.totalCount).toBe(0);
 
     const enrichment = getEnrichment(ctx) as { notice?: string };
@@ -325,9 +327,9 @@ describe('workflowList', () => {
     expect(enrichment.notice).toContain('nonexistent-tag');
   });
 
-  it('does not emit an empty-result notice when workflows match', () => {
+  it('does not emit an empty-result notice when workflows match', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
-    const result = workflowList.handler(workflowList.input.parse({}), ctx);
+    const result = await workflowList.handler(workflowList.input.parse({}), ctx);
     expect(result.totalCount).toBe(3);
     expect((getEnrichment(ctx) as { notice?: string }).notice).toBeUndefined();
   });

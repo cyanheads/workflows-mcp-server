@@ -1,9 +1,13 @@
 {
   "manifest_version": "0.3",
   "name": "workflows-mcp-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.",
-  "author": { "name": "cyanheads" },
+  "author": {
+    "name": "Casey Hand",
+    "email": "casey@caseyjhand.com",
+    "url": "https://caseyjhand.com"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/cyanheads/workflows-mcp-server"

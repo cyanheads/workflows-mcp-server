@@ -177,8 +177,8 @@ docs/api/
 .storage/
 repomix-output*
 duckdata/
-.claude
-data/
+.claude/
+/data/
 docs/devdocs.md
 ideas/
 .mcp.json
@@ -188,7 +188,7 @@ ideas/
 # =============================================================================
 .mcpregistry_github_token
 .mcpregistry_registry_token
-.agents
+.agents/
 announcements/
 
 # =============================================================================

@@ -4,7 +4,7 @@ description: >
   Land working-tree changes as logical commits — the work grouped by concern, topped by a release commit (version bump, changelog, regenerated artifacts) and an annotated tag. Verify, commit, tag. Stops at "committed and tagged locally" — no push, no publish. The release-and-publish skill picks up from here. Distilled from the git_wrapup_instructions protocol.
 metadata:
   author: cyanheads
-  version: "1.4"
+  version: "1.11"
   audience: external
   type: workflow
 ---
@@ -27,7 +27,7 @@ Every item must be true before starting wrapup. Committing means releasing — a
 - [ ] **Code simplified** — if the diff spans more than ~50 changed lines or touches 3+ source files, the `code-simplifier` skill has been run across the changes
 - [ ] **`bun run devcheck` passes** — typecheck + lint clean
 - [ ] **`bun run rebuild` succeeds** — full clean build from scratch
-- [ ] **All tests pass** — `bun run test:all` (or `bun run test`). New tests and regression tests added as needed for the changes being shipped.
+- [ ] **All tests pass** — `bun run test:all` (or `bun run test`), plus `bun run test:package` where the project defines one: it guards the public-export manifest and is not part of `test:all`. New tests and regression tests added as needed for the changes being shipped.
 - [ ] **Fixes verified** — bug fixes validated, generally via `bun run rebuild` and field-testing. Not just written — confirmed to resolve the described behavior.
 - [ ] **No known regressions** — the changes don't break existing functionality
 - [ ] **GH issues updated** — issues addressed by this work commented with what landed and any follow-ups needed. Concise. Backlinked as needed.
@@ -91,13 +91,17 @@ Create `changelog/<major.minor>.x/<version>.md`. Use `changelog/template.md` as 
 ---
 summary: "<one-line headline, ≤350 chars, no markdown>"
 breaking: false    # true if consumers must change code to upgrade
-security: false    # true if this release contains a security fix
+security: false    # true ONLY for a security fix in this server's own source — NOT a dependency/transitive CVE bump (those go under ## Dependencies)
 ---
 ```
 
+**Write `summary:` LAST, derived from the body you just wrote — never independently.** It is the line most readers see, and it propagates unedited to three further surfaces: the `CHANGELOG.md` rollup, the GitHub Release body, and the annotated tag (which cannot be edited once pushed). Written from recollection rather than from the body, it reliably names a mechanism that was never built or a target that was never fixed, while the body beside it stays correct. After writing it, re-read the body and confirm every claim in the summary appears there. Derived-from-the-body means the facts come from the body — not that every body item appears: the summary is the tag's theme line, and comma-stitching every change into an inventory near the 350-char cap is the failure mode.
+
+**`security:` is a source-code signal — not a dependency-CVE signal.** Set `security: true` only when this release fixes a vulnerability or adds hardening in code *this server ships*. A dependency or transitive CVE bump — even one that clears an advisory (`bun audit` going 1 → 0) — is routine maintenance: record it under `## Dependencies` with the advisory ID and leave the flag `false`. The `🛡️ Security` badge answers "does the server itself have a vuln"; a dep bump must not trip it.
+
 **Body:** Section order follows Keep a Changelog — Added / Changed / Deprecated / Removed / Fixed / Security. Include only sections with entries. Delete empty sections.
 
-**Tone:** Terse, fact-dense. Lead each bullet with the symbol or concept in **bold**. One sentence per bullet by default. See the authoring guide in `changelog/template.md` for full conventions.
+**Tone:** Terse, fact-dense. Bullet = **symbol** + what changed + at most one consumer-facing caveat; one sentence by default, two max — a bullet past ~40 words or three sentences is wrong. The linked issue carries the why and the commit diff the how; the changelog names what changed and what a consumer does about it. Cut: history/justification narration, design-rationale defense, "X unchanged" clauses (short parenthetical only where a misread is likely), edge-case inventories. **Verified ≠ included** — the diff-is-source-of-truth rule bounds the truth of what you write, never the amount. Model length on `changelog/template.md`'s authoring guide, never on the previous entry (entries modeled on entries compound). `agent-notes` carries adoption steps only, never a second rendering of the body; a consequence shared by many bullets is stated once, not per bullet. Full conventions: the authoring guide in `changelog/template.md`.
 
 ### 5. Regenerate derived artifacts
 
@@ -115,6 +119,7 @@ The tree being committed must pass verification. Both must succeed:
 ```bash
 bun run devcheck
 bun run test:all           # or `bun run test` if no test:all script exists
+bun run test:package       # only if the script exists — NOT part of test:all
 ```
 
 **If either fails, halt.** Do not bypass verification to land the commit. Fix the issue first, then re-run from step 6.
@@ -140,6 +145,24 @@ git commit -m "<subject>"
 - Work commits (no version): `feat: hosted server endpoint`, `fix: handle empty SPARQL result sets`, `feat(linter): enrichment contract rules`, `docs: document the enrichment block`
 - Release commit (subject leads with the version): `chore(release): 0.2.1 — empty SPARQL result handling`
 
+**Body: every commit has one, and it is one or two lines.** Uniform across the stack — no commit ships subject-only, none ships a paragraph. One sentence stating the *why* or the load-bearing constraint, a second only if the first genuinely cannot carry it. Two lines is the hard ceiling.
+
+```
+fix: handle empty SPARQL result sets
+
+Upstream returns 200 with an empty bindings array rather than 404.
+```
+
+**Never put a closing keyword in a commit body.** `Fixes #N`, `Closes #N`, `Resolves #N` and friends close the issue the moment the commit is pushed — before the close-out comment recording what shipped, so the issue closes with no account of the fix. Reference issues as bare `(#N)` backlinks in the subject or body; closing is a deliberate later step.
+
+A body is too long the moment it:
+- enumerates the files, subsystems, or symbols touched — that is `git show --stat`
+- walks through how the implementation works — that is the code
+- narrates a fix's mechanism across multiple sentences — that is the changelog entry
+- runs to a second paragraph, ever
+
+The changelog carries the depth, the tag carries the headline, the commit carries one line of why. When the body wants to grow, that pressure is telling you the content belongs in the changelog entry.
+
 **Rules:**
 - Plain `-m` flag only — no heredoc, no command substitution
 - No `Co-authored-by` or `Generated with` trailers
@@ -151,42 +174,37 @@ git commit -m "<subject>"
 ### 8. Create an annotated tag
 
 ```bash
-git tag -a v<version> -m "<tag message with embedded newlines>"
+git tag -a v<version> --cleanup=whitespace -m "<tag message with embedded newlines>"
 ```
 
-Use `-m` with embedded newlines in the string (the commit `-m`-only constraint applies here too — no heredoc). The tag message renders as the GitHub Release body via `--notes-from-tag`. It must be structured markdown, not a flat string. Format:
+Use `-m` with embedded newlines in the string (the commit `-m`-only constraint applies here too — no heredoc). The tag message renders as the GitHub Release body via `--notes-from-tag`. It must be structured markdown, not a flat string.
+
+`--cleanup=whitespace` is load-bearing. The default cleanup (`strip`) deletes `#`-leading lines as comments, so markdown headers silently vanish from the tag body. `--cleanup=verbatim` is worse: it skips end-of-message normalization, so with tag signing enabled the signature is appended flush against the message's last character — git then can't parse its own signature (the tag reads as unsigned) and the whole `-----BEGIN SSH SIGNATURE-----` block publishes verbatim into the GitHub Release body.
+
+Format — a **headline digest**, never a section-by-section changelog mirror:
 
 ```
 <theme — omit version number, GitHub prepends v<VERSION>:>
 
-<optional context — one concise line, two max>
+- <notable user-facing change> (#N)
+- <notable user-facing change> (#N)
+- <ONE compact grouped line for the minor/internal changes — build config, repo hygiene, metadata>
+- deps: `@cyanheads/mcp-ts-core` ^0.10.6 → ^0.10.14 (+ dev-dep bumps)
 
-<Sections — Keep a Changelog names, only those with entries>
-
-Added:
-
-- <bullet>
-
-Changed:
-
-- <bullet>
-
-<dep arrows if applicable>
-
-Dependency bumps:
-
-- `pkg` ^old → ^new
-
-<N> tests pass; `bun run devcheck` clean.
+[CHANGELOG v<version>](https://github.com/<OWNER>/<REPO>/blob/main/changelog/<major.minor>.x/<version>.md)
 ```
 
 **Rules:**
 - Subject line omits the version number (GitHub prepends `v<VERSION>:` to the release title)
-- **No narrative preamble** — context under the subject is one concise line, two max; never paragraph blocks. Detail belongs in the bullets
-- Not a CHANGELOG copy — terse, scannable
+- **Flat bullets only — never Keep-a-Changelog section headers.** `Added:`/`Changed:`/`Fixed:`/`Dependency bumps:` belong in the changelog file; a tag that mirrors the changelog's structure is wrong even when every line is accurate
+- **Complete at headline granularity** — every changelog-worthy change stays visible: notable changes get their own bullet, minor/internal items (build config, repo hygiene, metadata) share ONE grouped compact bullet. Nothing silently dropped, nothing expanded — the changelog carries the depth, the tag carries the existence
+- **Deps: one line max**, naming only what earns it (the framework bump, a major); per-package arrows for the rest live in the changelog entry only
+- **No gates line** — test counts and devcheck status are changelog detail, not release-body material
+- No narrative preamble — bullets under the subject, no paragraph blocks
 - No marketing adjectives
-- Length is earned — two-line tags are fine for small patches
+- Length is earned — a subject + two bullets + changelog link is a fine tag for a small patch
 - **Issue backlinks:** when changes address GitHub issues, include `(#N)` references in the relevant bullets — same as the changelog entry. The backlinks render as clickable links in the GitHub Release body.
+- **Changelog link (final line):** end the tag body with a Markdown link to this version's changelog file, so the GitHub Release offers a one-click jump to the full entry — `[CHANGELOG v<version>](https://github.com/<OWNER>/<REPO>/blob/main/changelog/<major.minor>.x/<version>.md)`. Derive `<OWNER>/<REPO>` from the origin remote; the path mirrors the file authored in step 4 (e.g. `changelog/0.10.x/0.10.12.md`). Keep the blank line above it so it renders as its own paragraph, not appended to the gates line.
 
 ### 9. Verify end state
 
@@ -194,9 +212,10 @@ Dependency bumps:
 git log --oneline -8              # confirm the commit stack: work commits + release commit on top
 git show v<version> --stat | head -20   # confirm tag points at HEAD (the release commit)
 git status                        # must be clean
+git tag -l v<version> --format='%(if)%(contents:signature)%(then)signed%(else)unsigned%(end)'   # with tag signing enabled, must print "signed"
 ```
 
-If the working tree isn't clean or the tag doesn't point at HEAD, something went wrong — investigate before proceeding.
+If the working tree isn't clean or the tag doesn't point at HEAD, something went wrong — investigate before proceeding. `unsigned` under enabled tag signing means the signature didn't parse (see step 8's cleanup note) — delete and recreate the tag before it leaks the signature block into the GitHub Release body.
 
 **Do NOT push.** This skill stops here. Use the `release-and-publish` skill for the push + publish workflow.
 
@@ -219,7 +238,9 @@ If the working tree isn't clean or the tag doesn't point at HEAD, something went
 - [ ] `docs/tree.md` regenerated if structure changed (`bun run tree`)
 - [ ] `bun run devcheck` passes
 - [ ] `bun run test:all` (or `test`) passes
+- [ ] `bun run test:package` passes, when the project defines it — it guards the public-export manifest and `test:all` does not run it
 - [ ] Work grouped into logical commits (large features split by layer); release artifacts (version + changelog + tree) committed separately on top, subject leading with the version
-- [ ] Annotated tag `v<version>` with structured markdown message
+- [ ] Every commit carries a body, and every body is one or two lines — none subject-only, none a paragraph
+- [ ] Annotated tag `v<version>` with structured markdown message, final line linking this version's changelog file
 - [ ] Working tree clean
 - [ ] Nothing pushed — local only

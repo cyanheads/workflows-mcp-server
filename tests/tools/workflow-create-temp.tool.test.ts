@@ -152,6 +152,7 @@ describe('workflowCreateTemp', () => {
 
   it('formats output with key, file path, and temp note', () => {
     const output = {
+      status: 'created' as const,
       filePath: '/tmp/workflows/temp/quick-research-plan-1-0-0-workflow.yaml',
       key: 'Quick Research Plan@1.0.0',
       created_date: '2026-05-28',

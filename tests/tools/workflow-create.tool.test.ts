@@ -221,6 +221,7 @@ describe('workflowCreate', () => {
 
   it('formats output with key and file path', () => {
     const output = {
+      status: 'created' as const,
       filePath: '/tmp/wf/categories/deployment/standard-deploy-1-0-0-workflow.yaml',
       key: 'Standard Deploy@1.0.0',
       created_date: '2026-05-28',

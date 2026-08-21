@@ -1,6 +1,15 @@
 [install]
+# Block package versions published less than 3 days ago — supply-chain guard
+# against freshly compromised releases. Existing versions in bun.lock are
+# unaffected.
+minimumReleaseAge = 259200 # seconds (3 days)
+# Framework releases are first-party — adopt them same-day.
+minimumReleaseAgeExcludes = ["@cyanheads/mcp-ts-core"]
 auto = "fallback"
 frozenLockfile = false
+
+[install.security]
+scanner = "@socketsecurity/bun-security-scanner"
 
 [run]
 bun = true

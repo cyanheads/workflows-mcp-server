@@ -6,17 +6,15 @@
       "typescript",
       "tsc-alias",
       "depcheck",
-      "@cyanheads/mcp-ts-core"
+      "@cyanheads/mcp-ts-core",
+      "@socketsecurity/bun-security-scanner"
     ],
     "ignorePatterns": []
   },
   "outdated": {
-    "allowlist": ["@types/node"]
+    "allowlist": []
   },
   "packaging": {
     "pluginManifests": true
-  },
-  "skillVersions": {
-    "ignore": ["migrate-mcp-ts-template"]
   }
 }

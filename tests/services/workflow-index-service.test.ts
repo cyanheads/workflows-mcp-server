@@ -24,6 +24,15 @@ function makeWorkflowYaml(overrides: Record<string, unknown> = {}): string {
     category: 'testing',
     steps: [{ server: 'my-server', tool: 'my_tool' }],
     ...overrides,
+  } as {
+    name: string;
+    version: string;
+    description: string;
+    author: string;
+    category?: string;
+    temporary?: boolean;
+    tags?: string[];
+    steps: Array<{ server: string; tool: string }>;
   };
 
   const lines: string[] = [];
@@ -343,10 +352,10 @@ describe('WorkflowIndexService', () => {
       count: number;
       entries: Record<string, { isTemp: boolean; category?: string }>;
     };
-    const entry = snapshot.entries['test-workflow@1.0.0'];
-    expect(entry).toBeDefined();
-    expect(entry.isTemp).toBe(false);
-    expect(entry.category).toBe('testing');
+    expect(snapshot.entries['test-workflow@1.0.0']).toMatchObject({
+      isTemp: false,
+      category: 'testing',
+    });
   });
 
   // --- forEach round-trip ---

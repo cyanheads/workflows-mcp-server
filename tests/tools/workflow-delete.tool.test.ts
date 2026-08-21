@@ -177,7 +177,7 @@ describe('workflowDelete', () => {
       new Error("EACCES: permission denied, unlink '/abs/secret/deploy-app.yaml'"),
     );
     const input = workflowDelete.input.parse({ name: 'deploy-app', version: '1.0.0' });
-    const err = await workflowDelete.handler(input, ctx).catch((e: unknown) => e);
+    const err = await Promise.resolve(workflowDelete.handler(input, ctx)).catch((e: unknown) => e);
     expect(err).toMatchObject({
       code: JsonRpcErrorCode.InternalError,
       data: { reason: 'delete_failed' },

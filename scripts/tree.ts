@@ -131,9 +131,15 @@ async function loadIgnoreHandler(
   return ig;
 }
 
-function isIgnored(entryPath: string, root: string, ig: Ignore): boolean {
+/**
+ * A directory-only pattern (`/data/`, `.claude/`) matches only when the tested
+ * path carries the trailing slash too — `ignore` has no other way to tell a
+ * directory from a file of the same name. The caller holds the `Dirent`, so the
+ * flag is free.
+ */
+function isIgnored(entryPath: string, root: string, ig: Ignore, isDirectory: boolean): boolean {
   const rel = relative(root, entryPath).split(sep).join(posix.sep);
-  return ig.ignores(rel);
+  return ig.ignores(isDirectory ? `${rel}/` : rel);
 }
 
 /**
@@ -182,7 +188,7 @@ async function generateTree(
   }
 
   const filteredEntries = entries
-    .filter((entry) => !isIgnored(join(resolvedDir, entry.name), root, ig))
+    .filter((entry) => !isIgnored(join(resolvedDir, entry.name), root, ig, entry.isDirectory()))
     .sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) return -1;
       if (!a.isDirectory() && b.isDirectory()) return 1;
@@ -191,8 +197,7 @@ async function generateTree(
 
   // Sequential traversal — prevents unbounded concurrent readdir calls
   let result = '';
-  for (let i = 0; i < filteredEntries.length; i++) {
-    const entry = filteredEntries[i];
+  for (const [i, entry] of filteredEntries.entries()) {
     const isLast = i === filteredEntries.length - 1;
     const connector = isLast ? '\u2514\u2500\u2500 ' : '\u251C\u2500\u2500 ';
     const newPrefix = prefix + (isLast ? '    ' : '\u2502   ');

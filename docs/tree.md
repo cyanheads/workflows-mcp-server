@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2026-07-01 02:39:41
+Generated on: 2026-08-21 23:06:07
 
 ```text
 workflows-mcp-server/
@@ -10,16 +10,21 @@ workflows-mcp-server/
 │   ├── mcp.json
 │   └── plugin.json
 ├── .github/
-│   └── ISSUE_TEMPLATE/
-│       ├── bug_report.yml
-│       ├── config.yml
-│       └── feature_request.yml
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml
+│   │   ├── config.yml
+│   │   └── feature_request.yml
+│   ├── CODE_OF_CONDUCT.md
+│   ├── CONTRIBUTING.md
+│   ├── FUNDING.yml
+│   └── SECURITY.md
 ├── .vscode/
 │   ├── extensions.json
 │   └── settings.json
 ├── changelog/
 │   ├── 0.1.x/
 │   ├── 0.2.x/
+│   ├── 0.3.x/
 │   └── template.md
 ├── docs/
 │   ├── design.md
@@ -43,7 +48,11 @@ workflows-mcp-server/
 ├── skills/
 │   ├── add-app-tool/
 │   │   └── SKILL.md
+│   ├── add-export/
+│   │   └── SKILL.md
 │   ├── add-prompt/
+│   │   └── SKILL.md
+│   ├── add-provider/
 │   │   └── SKILL.md
 │   ├── add-resource/
 │   │   └── SKILL.md
@@ -197,8 +206,10 @@ workflows-mcp-server/
 │   └── global_instructions.md
 ├── .dockerignore
 ├── .env.example
+├── .gitattributes
 ├── .gitignore
 ├── .mcpbignore
+├── AGENTS.md
 ├── biome.json
 ├── bun.lock
 ├── bunfig.toml

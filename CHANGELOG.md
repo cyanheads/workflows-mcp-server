@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.0](changelog/0.3.x/0.3.0.md) — 2026-08-21 · ⚠️ Breaking
+
+MCP SDK v2 maintenance with strict tool inputs, modern advertised schemas, TypeScript 7, Bun 1.4, supply-chain guards, and refreshed packaging and agent guidance.
+
 ## [0.2.0](changelog/0.2.x/0.2.0.md) — 2026-06-30
 
 Completes library CRUD with a workflow_delete tool (by name + optional version) and adds a workflow_list keyword query filter over name and description. Tool descriptions rewritten client-facing, empty list results echo the applied filters, and the README documents the versioned per-name@version storage path.
