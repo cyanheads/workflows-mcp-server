@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.1](changelog/0.3.x/0.3.1.md) — 2026-09-04
+
+Server identity now resolves from the served package instead of the caller's working directory, pre-init logs are no longer dropped, and MCP_SESSION_MODE settles to stateless. mcp-ts-core bumps to 0.12.5, zod to 4.5.4.
+
 ## [0.3.0](changelog/0.3.x/0.3.0.md) — 2026-08-21 · ⚠️ Breaking
 
 MCP SDK v2 maintenance with strict tool inputs, modern advertised schemas, TypeScript 7, Bun 1.4, supply-chain guards, and refreshed packaging and agent guidance.
