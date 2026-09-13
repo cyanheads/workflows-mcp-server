@@ -6,10 +6,11 @@
 
 | Name | Description | Key Inputs | Annotations |
 |:-----|:------------|:-----------|:------------|
-| `workflow_list` | List workflows from the index. Filters by category, tags (AND match), and optionally surfaces the unique `<server>/<tool>` pairs used across each matching workflow's steps. Temporary workflows are excluded. | `category?`, `tags?`, `includeTools?` | `readOnlyHint: true`, `openWorldHint: false` |
+| `workflow_list` | List workflows from the index. Filters by keyword, category, tags (AND match), and optionally surfaces the unique `<server>/<tool>` pairs used across each matching workflow's steps. Temporary workflows are excluded. | `query?`, `category?`, `tags?`, `includeTools?` | `readOnlyHint: true`, `openWorldHint: false` |
 | `workflow_get` | Retrieve a complete workflow definition by name plus the current global instructions text. When `version` is omitted, returns the highest semver match. | `name`, `version?` | `readOnlyHint: true`, `openWorldHint: false` |
 | `workflow_create` | Write a new permanent workflow YAML to `categories/<slugified-category>/`. Rejects if `name@version` already exists. Server stamps `created_date` and `last_updated_date`. Rebuilds the index and snapshot after write. | `name`, `version`, `description`, `author`, `category`, `steps[]`, `tags?` | `idempotentHint: false` |
 | `workflow_create_temp` | Write a temporary workflow to `temp/`. Sets `temporary: true`, skips conflict checks (temp is throwaway). Stamps dates. Excluded from `workflow_list` results but accessible via `workflow_get`. | Same as `workflow_create` minus `category` | `idempotentHint: false` |
+| `workflow_delete` | Delete a permanent workflow by name and optional version; omitting version selects the latest. Rejects temporary workflows. | `name`, `version?` | `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false` |
 
 ### Resources
 
@@ -48,9 +49,9 @@ There is no external API. The data source is the local filesystem (`workflows-ya
 
 | Service | Wraps | Used By |
 |:--------|:------|:--------|
-| `WorkflowIndexService` | Local filesystem (`node:fs/promises`) + watcher | All four tools |
+| `WorkflowIndexService` | Local filesystem (`node:fs/promises`) + watcher | All five tools |
 
-`WorkflowIndexService` owns: initial index build, filesystem watcher lifecycle, semver-aware lookup, write operations (permanent + temp), index snapshot writes.
+`WorkflowIndexService` owns: initial index build, filesystem watcher lifecycle, semver-aware lookup, permanent and temporary writes, permanent deletion, and index snapshot writes.
 
 No `StorageService` (framework KV). See Decisions Log.
 
@@ -76,6 +77,7 @@ All three go in `src/config/server-config.ts` via `parseEnvConfig`.
 4. `workflow_get` — read-only, exercises semver lookup and global instructions injection
 5. `workflow_create` — write path for permanent workflows
 6. `workflow_create_temp` — write path for temp workflows (simpler variant of create)
+7. `workflow_delete` — remove a permanent workflow and refresh the index
 
 Each step is independently testable before the next is added.
 
@@ -90,11 +92,11 @@ The `WorkflowSchema` is the Zod shape the index service validates every loaded Y
 ```
 WorkflowSchema = z.object({
   name:              z.string().min(1)
-  version:           z.string().regex(/^\d+\.\d+\.\d+/)   // semver, basic check
+  version:           z.string().refine(v => semver.valid(v) !== null)
   description:       z.string().min(1)
   author:            z.string().min(1)
   category:          z.string().min(1).optional()           // required for permanent workflows, absent for temp
-  tags:              z.array(z.string()).optional()
+  tags:              z.array(z.string()).nullable().optional().transform(v => v ?? undefined)
   created_date:      z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional()
   last_updated_date: z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional()
   temporary:         z.boolean().optional()
@@ -107,7 +109,7 @@ StepSchema = z.object({
   action:      z.string().optional()
   description: z.string().optional()
   name:        z.string().optional()    // some seed files use step-level names
-  params:      z.record(z.unknown()).optional()
+  params:      z.record(z.string(), z.unknown()).optional()
   forEach:     z.string().optional()    // seed data uses this; stored as opaque string
 })
 ```
@@ -155,7 +157,7 @@ Single rule: lowercase, replace any non-alphanumeric run with a single hyphen, t
 "project-chimera"       → "project-chimera"      (already clean)
 ```
 
-This means the seed directories with underscores (`git_operations`, `github_operations`, `research_operations`, `web_operations`) will be treated as equivalent to `git-operations` etc. **when reading** — the index scans all files in `categories/` recursively and applies the slug rule to infer the category. **When writing**, new workflows always use kebab-case. The seed files are fixtures and their directory names don't need renaming.
+The index scans all files in `categories/` recursively and reads the category from each workflow's YAML, regardless of its directory name. New writes always use kebab-case directories. Existing seed directories with underscores do not need renaming.
 
 ---
 
@@ -180,15 +182,26 @@ This means the seed directories with underscores (`git_operations`, `github_oper
 | Reason | Code | When | Recovery |
 |:-------|:-----|:-----|:---------|
 | `already_exists` | `Conflict` | `name@version` already exists in the permanent index | Change the version field or use a different name to avoid the conflict. |
-| `invalid_steps` | `ValidationError` | `steps` array is empty or a step is missing required `server`/`tool` fields | Each step must have `server` and `tool` fields; provide at least one step. |
+| `invalid_input` | `ValidationError` | Category is blank or slugifies to empty, or the workflow name slugifies to empty or exceeds the filename length limit | Use alphanumeric names and categories; keep the slugified name under 200 characters. |
 | `write_failed` | `InternalError` | Filesystem write error (permissions, disk full) | Check that the workflows directory is writable and has sufficient disk space. |
 
 ### `workflow_create_temp`
 
 | Reason | Code | When | Recovery |
 |:-------|:-----|:-----|:---------|
-| `invalid_steps` | `ValidationError` | Same as `workflow_create` | Each step must have `server` and `tool` fields; provide at least one step. |
+| `invalid_input` | `ValidationError` | Workflow name slugifies to empty or exceeds the filename length limit | Use an alphanumeric name under 200 characters after slugification. |
 | `write_failed` | `InternalError` | Same as `workflow_create` | Check that the workflows directory is writable and has sufficient disk space. |
+
+Schema-invalid tool arguments return `InvalidParams` before the handler runs.
+
+### `workflow_delete`
+
+| Reason | Code | When | Recovery |
+|:-------|:-----|:-----|:---------|
+| `not_found` | `NotFound` | No workflow matches the name and optional version | Use `workflow_list` to discover names and versions. |
+| `temp_not_allowed` | `ValidationError` | The selected workflow is temporary | Only permanent workflows can be deleted with this tool. |
+| `delete_failed` | `InternalError` | Filesystem deletion fails | Check workflow-directory write permissions. |
+| `index_unavailable` | `ServiceUnavailable` | Index is not ready | Retry after initialization. |
 
 ---
 
@@ -196,11 +209,11 @@ This means the seed directories with underscores (`git_operations`, `github_oper
 
 | Topic | Decision | Reasoning |
 |:------|:---------|:---------|
-| **Tool names** | `workflow_list`, `workflow_get`, `workflow_create`, `workflow_create_temp` | Standard `{prefix}_{verb}_{noun}` pattern. `_create_temp` is a two-word noun warranting 4 segments; it's clearer than `workflow_create_temporary` (too long) or a `mode` enum on `workflow_create` (complicates output schema and conflict semantics — temp skips conflict checks). |
+| **Tool names** | `workflow_list`, `workflow_get`, `workflow_create`, `workflow_create_temp`, `workflow_delete` | Separate operations keep permanent creation, temporary overwrite, and permanent deletion semantics explicit. |
 | **Storage abstraction** | Direct `node:fs/promises`, not `ctx.state` / framework `StorageService` | `ctx.state` is a tenant-scoped KV store for ephemeral, request-scoped data. It's not suited for file content, directory trees, or watcher lifecycles. The data source is a user-owned directory on the local filesystem — `fs` is the correct primitive. The framework's storage layer adds complexity with no benefit here. |
 | **Filesystem watcher** | `node:fs/promises watch` (`fs.watch` recursive) via `AbortController` | Bun and Node ≥22 both support `fs.watch` with `{ recursive: true }`. No external dependency needed. `chokidar` was the legacy choice but adds 2+ transitive deps (`fsevents`, etc.) for functionality that `node:fs` now covers. If `recursive` watch proves unreliable across platforms, the fallback is `chokidar` — but v1 starts with zero extra deps. |
 | **`workflow_update`** | Dropped | An update is a create with a new version string — the consuming agent already knows the name@version convention. Adding `workflow_update` would create ambiguity (does it bump the version? overwrite in place?) without clarity. Agents that need to revise a workflow create a new version. |
-| **`workflow_delete`** | Dropped | Filesystem deletion is irreversible. Staying out of delete territory keeps the server's blast radius minimal. Deletion is a human operation via the filesystem. |
+| **`workflow_delete`** | Permanent workflows only, marked destructive | Name and optional version select the workflow; temporary workflows are rejected. |
 | **`workflow_list_categories`** | Dropped | `workflow_list` without filters already returns all workflows; category names are discoverable from the `category` field in results. A dedicated tool adds surface without adding capability. |
 | **`workflow_get_global_instructions`** | Dropped | Global instructions are always returned with `workflow_get`. Exposing them separately is a minor convenience that doesn't earn a slot. If an agent needs instructions without a workflow, it calls `workflow_get` on any workflow — or reads the file directly. |
 | **Validation stance** | Lenient (skip + log invalid files) | The seed data has real inconsistencies: missing `category` fields, YAML comments, step-level `name` fields not in the schema. Strict rejection would leave the server unable to index a substantial fraction of the seed. Lenient indexing with warning logs is safer during v1 — agents see a partial index that's honest about what loaded, rather than a server that refuses to start. |
@@ -220,4 +233,3 @@ This means the seed directories with underscores (`git_operations`, `github_oper
 
 - **No deduplication across seed directories.** The seed has both `research_operations/` and `research-operations/` directories with different workflows. The index will have both. If two files share a `name@version`, the second one encountered wins (last-write semantics) with a warning logged.
 - **Recursive `fs.watch` on macOS/Bun.** Bun's `fs.watch({ recursive: true })` is well-supported on macOS but has known edge cases on some Linux setups. If the watcher produces false-positive or missed events in production, adding `chokidar` is the upgrade path.
-- **Semver validation is basic.** The Zod pattern `/^\d+\.\d+\.\d+/` accepts `1.0.0` but also `1.0.0-beta` and `1.0.0.extra`. A stricter semver regex is possible but the seed data uses clean `major.minor.patch` strings throughout — the loose check is sufficient for v1.

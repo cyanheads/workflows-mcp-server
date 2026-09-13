@@ -191,7 +191,7 @@ The repository ships a `workflows-yaml/` directory with example workflows organi
 
 ### Prerequisites
 
-- [Bun v1.3.0](https://bun.sh/) or higher (or Node.js v24+).
+- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+).
 - A local directory containing YAML workflow files (or use the bundled `workflows-yaml/` seed).
 
 ### Installation
@@ -232,6 +232,7 @@ cp .env.example .env
 | `WATCHER_DEBOUNCE_MS` | Milliseconds to debounce filesystem change events before rebuilding the index. | `500` |
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
 | `MCP_HTTP_PORT` | Port for HTTP server. | `3010` |
+| `MCP_SESSION_MODE` | HTTP sessions: `auto`, `stateful`, or `stateless`. This server needs no caller-input round trips. | `stateless` in Docker and `.env.example`; framework `auto` resolves to `stateful` |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
 | `OTEL_ENABLED` | Enable [OpenTelemetry instrumentation](https://github.com/cyanheads/mcp-ts-core/tree/main/docs/telemetry) (spans, metrics, completion logs). | `false` |
@@ -305,7 +306,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for development guidelines and architectural rule
 
 ## Contributing
 
-Issues and pull requests are welcome. Run checks and tests before submitting:
+Issues are welcome. Run checks and tests before submitting:
 
 ```sh
 bun run devcheck
