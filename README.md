@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.3.2-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-v2-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.0-blueviolet.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.3.2-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.0.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.0-blueviolet.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -21,9 +21,11 @@
 
 ---
 
-## Tools
+## Overview
 
-Five tools covering the full workflow library lifecycle — discovery, retrieval, creation, and deletion for both permanent and temporary workflows:
+A declarative workflow library for LLM agents, backed by local YAML files. Store, list, and retrieve named, versioned multi-step playbooks — each a sequence of MCP server/tool calls — for permanent reuse or one-shot temporary runs. Runs as a stdio process or a local Streamable HTTP server; an in-memory index rebuilds automatically as files change.
+
+### Tools
 
 | Tool | Description |
 |:-----|:------------|
@@ -33,9 +35,9 @@ Five tools covering the full workflow library lifecycle — discovery, retrieval
 | `workflow_create_temp` | Write a temporary one-shot workflow, indexed but excluded from list results. |
 | `workflow_delete` | Permanently remove a permanent workflow by name and optional version. |
 
-### `workflow_list`
+## Capability reference
 
-List permanent workflows from the in-memory index.
+### `workflow_list` <sub>tool</sub>
 
 - Optional keyword `query` filter (case-insensitive substring across workflow name and description)
 - Optional category filter (case-insensitive substring match)
@@ -46,9 +48,7 @@ List permanent workflows from the in-memory index.
 
 ---
 
-### `workflow_get`
-
-Retrieve a complete workflow by name, including the global instructions document.
+### `workflow_get` <sub>tool</sub>
 
 - Semver-aware: omit `version` to get the highest available match; specify a version for an exact lookup
 - Returns the full workflow YAML structure with all steps and metadata
@@ -58,9 +58,7 @@ Retrieve a complete workflow by name, including the global instructions document
 
 ---
 
-### `workflow_create`
-
-Write a new permanent workflow to the library.
+### `workflow_create` <sub>tool</sub>
 
 - Workflow stored at `categories/<slugified-category>/<slugified-name>-<slugified-version>-workflow.yaml` — one file per `name@version`, so multiple versions coexist
 - Rejects if `name@version` already exists — bump the version to create a new revision
@@ -69,9 +67,7 @@ Write a new permanent workflow to the library.
 
 ---
 
-### `workflow_create_temp`
-
-Write a throwaway workflow to the `temp/` directory.
+### `workflow_create_temp` <sub>tool</sub>
 
 - No conflict check — temp workflows are intentionally ephemeral and overwriteable
 - Indexed and accessible via `workflow_get` but excluded from `workflow_list` results
@@ -79,42 +75,29 @@ Write a throwaway workflow to the `temp/` directory.
 
 ---
 
-### `workflow_delete`
-
-Permanently remove a permanent workflow from the library.
+### `workflow_delete` <sub>tool</sub>
 
 - Semver-aware: omit `version` to delete the highest available match; specify a version to target one exactly
 - Only permanent workflows can be deleted — temporary workflows are rejected (they expire on their own)
 - Irreversible: the file is removed and the workflow no longer appears in `workflow_list` or `workflow_get`
 
----
-
 ## Features
 
-Built on [`@cyanheads/mcp-ts-core`](https://www.npmjs.com/package/@cyanheads/mcp-ts-core):
-
-- Declarative tool definitions — single file per primitive, framework handles registration and validation
-- Unified error handling — handlers throw, framework catches, classifies, and formats
-- Pluggable auth: `none`, `jwt`, `oauth`
-- Swappable storage backends: `in-memory`, `filesystem`, `Supabase`, `Cloudflare KV/R2/D1`
-- Structured logging with optional OpenTelemetry tracing
-- STDIO and Streamable HTTP transports
+Built on [`@cyanheads/mcp-ts-core`](https://github.com/cyanheads/mcp-ts-core): stdio and Streamable HTTP transports, pluggable auth (`none` / `jwt` / `oauth`), swappable storage (`in-memory`, `filesystem`, `Supabase`, `Cloudflare KV/R2/D1`), structured logging with optional OpenTelemetry tracing.
 
 Workflow library:
 
-- In-memory index keyed by `name@version`, built at startup from `workflows-yaml/categories/` recursively
-- Semver-aware lookup — latest version returned when version is omitted
-- Filesystem watcher (Node.js `fs.watch` recursive) rebuilds the index on any add/change/remove; debounced to avoid thrash
-- YAML validated at index time — invalid files are skipped and logged, never crash the server
+- YAML workflow files validated against a schema at index time; invalid files are skipped and logged, never crash the server
+- In-memory index keyed by `name@version`, built at startup from `workflows-yaml/categories/` recursively, kept fresh by a debounced recursive filesystem watcher on any add/change/remove
+- Semver-aware lookup — latest version returned when `version` is omitted
 - `_index.json` snapshot written on every rebuild for external tooling and debugging
 - Configurable `WORKFLOWS_DIR`, `GLOBAL_INSTRUCTIONS_PATH`, and debounce interval
 
 Agent-friendly output:
 
-- `workflow_get` always includes `globalInstructions` alongside the workflow — no second call needed
-- Discriminated `source` field (`permanent` | `temp`) on every `workflow_get` response
-- Typed error contracts with structured `reason` codes (`not_found`, `version_not_found`, `already_exists`, `temp_not_allowed`, `index_unavailable`) so callers can branch on error type rather than parsing messages
-- `workflow_list` with `includeTools: true` surfaces all MCP server/tool dependencies at a glance
+- Discriminated output — `source: "permanent" | "temp"` on every `workflow_get` response and typed `reason` codes (`not_found`, `version_not_found`, `already_exists`, `temp_not_allowed`, `index_unavailable`, …) on failures, so callers branch on data instead of parsing error strings
+- No extra round trip — `workflow_get` always returns `globalInstructions` alongside the workflow definition in the same response
+- Response shaping — `workflow_list`'s optional `includeTools` flag pre-derives the unique `server/tool` pairs used by a workflow, and an empty result echoes the applied filters with a broadening hint instead of returning nothing
 
 ---
 
