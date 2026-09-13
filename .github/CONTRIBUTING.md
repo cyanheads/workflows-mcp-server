@@ -28,7 +28,7 @@ If you're not sure, file here and it'll get routed.
 
 ## For agents
 
-Do the triage first. Use [`skills/report-issue-local/SKILL.md`](../skills/report-issue-local/SKILL.md) for this repo or [`skills/report-issue-framework/SKILL.md`](../skills/report-issue-framework/SKILL.md) after isolating a framework bug.
+Do the triage first. Use [`framework-skills/report-issue-local/SKILL.md`](../framework-skills/report-issue-local/SKILL.md) for this repo or [`framework-skills/report-issue-framework/SKILL.md`](../framework-skills/report-issue-framework/SKILL.md) after isolating a framework bug.
 
 ## Security
 

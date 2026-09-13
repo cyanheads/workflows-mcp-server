@@ -139,6 +139,12 @@ interface Check {
   /** If true, this check is skipped in fast mode (typically network-bound or very slow). */
   slowCheck?: boolean;
   tip?: (c: Colors) => string;
+  /**
+   * Optional rewrite of the output shown in the summary, applied after
+   * `isSuccess` has read the tool's own output. Use when a tool reports a
+   * defensible verdict under a name the project does not recognize.
+   */
+  transformOutput?: (result: ShellResult) => string;
 }
 
 // =============================================================================
@@ -273,29 +279,286 @@ const OUTDATED_ALLOWLIST = new Set(DEVCHECK_CONFIG.outdated?.allowlist ?? []);
 /** Use bun for package management commands if available, otherwise npm. */
 const PM_CMD = spawnSync('bun', ['--version'], { stdio: 'ignore' }).status === 0 ? 'bun' : 'npm';
 
+// ── Declared dependency identity (alias-aware) ───────────────────────
+
+/** The package.json block that declared a dependency, as `bun outdated` marks it. */
+type DependencyGroup = 'dev' | 'optional' | 'peer' | 'prod';
+
 /**
- * Direct dependencies from package.json, used to classify audit vulnerabilities
- * as direct (fixable by us) vs transitive/upstream (requires upstream fix).
+ * One `package.json` dependency entry resolved through any `npm:` alias.
+ * `bun outdated` reports rows under the *resolved* package name, so
+ * `"typescript-v6": "npm:typescript@^6.0.3"` is printed as `typescript`.
+ * Carrying the declared key alongside the resolved target is what lets the
+ * Outdated check name — and allowlist — the dependency the project declares.
  */
-const DIRECT_DEPS: ReadonlySet<string> = (() => {
+interface DeclaredDependency {
+  group: DependencyGroup;
+  /** The `package.json` key. */
+  key: string;
+  /** Version range with any `npm:<target>@` alias prefix stripped. */
+  range: string;
+  /** Registry package name the key resolves to; equals `key` when not aliased. */
+  target: string;
+}
+
+const DEPENDENCY_GROUPS: ReadonlyArray<readonly [DependencyGroup, string]> = [
+  ['prod', 'dependencies'],
+  ['dev', 'devDependencies'],
+  ['peer', 'peerDependencies'],
+  ['optional', 'optionalDependencies'],
+];
+
+/** Splits an `npm:<target>@<range>` alias spec; returns null for a plain range. */
+function parseAliasSpec(spec: string): { range: string; target: string } | null {
+  if (!spec.startsWith('npm:')) return null;
+  const rest = spec.slice(4);
+  // Scoped targets lead with `@`, so only a later `@` separates the range.
+  const separator = rest.lastIndexOf('@');
+  if (separator <= 0) return { range: '*', target: rest };
+  return { range: rest.slice(separator + 1), target: rest.slice(0, separator) };
+}
+
+const DECLARED_DEPENDENCIES: readonly DeclaredDependency[] = (() => {
   try {
     const pkg = JSON.parse(readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf-8'));
-    return new Set<string>([
-      ...Object.keys(pkg.dependencies ?? {}),
-      ...Object.keys(pkg.devDependencies ?? {}),
-    ]);
+    const declared: DeclaredDependency[] = [];
+    for (const [group, block] of DEPENDENCY_GROUPS) {
+      for (const [key, spec] of Object.entries(pkg[block] ?? {})) {
+        if (typeof spec !== 'string') continue;
+        const alias = parseAliasSpec(spec);
+        declared.push({ group, key, range: alias?.range ?? spec, target: alias?.target ?? key });
+      }
+    }
+    return declared;
   } catch {
-    return new Set<string>();
+    return [];
   }
 })();
+
+/** Direct dependency keys used to distinguish direct audit findings from transitive ones. */
+const DIRECT_DEPS: ReadonlySet<string> = new Set(
+  DECLARED_DEPENDENCIES.filter(({ group }) => group === 'prod' || group === 'dev').map(
+    ({ key }) => key,
+  ),
+);
+
+// ── Minimal range matching (alias attribution only) ──────────────────
+
+type VersionTriple = readonly [number, number, number];
+
+/** Parses a possibly partial version (`6`, `0.12`, `1.2.3-rc.1`) plus its precision. */
+function parseVersionParts(value: string): { segments: number; triple: VersionTriple } | null {
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(value.trim().replace(/^[v=\s]+/, ''));
+  if (!match) return null;
+  const segments = match[3] !== undefined ? 3 : match[2] !== undefined ? 2 : 1;
+  return {
+    segments,
+    triple: [Number(match[1]), Number(match[2] ?? 0), Number(match[3] ?? 0)],
+  };
+}
+
+function compareVersions(a: VersionTriple, b: VersionTriple): number {
+  for (let index = 0; index < 3; index++) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
+/** The exclusive upper bound of a caret range, honoring 0.x and partial versions. */
+function caretCeiling(bound: VersionTriple, segments: number): VersionTriple {
+  if (bound[0] > 0) return [bound[0] + 1, 0, 0];
+  if (segments === 1) return [1, 0, 0];
+  if (bound[1] > 0) return [0, bound[1] + 1, 0];
+  if (segments === 2) return [0, 1, 0];
+  return [0, 0, bound[2] + 1];
+}
+
+/**
+ * Whether a version satisfies one comparator. Covers the operators a
+ * hand-written `package.json` range uses (`^`, `~`, exact, the four
+ * inequalities). Anything unrecognized is treated as unconstrained, so an
+ * exotic range never *excludes* a candidate — attribution then reports
+ * ambiguity instead of guessing.
+ */
+function comparatorAdmits(comparator: string, version: VersionTriple): boolean {
+  const token = comparator.trim();
+  if (token === '' || token === '*' || token === 'x' || token === 'latest') return true;
+  const match = /^(\^|~|>=|<=|>|<|=)?\s*(.+)$/.exec(token);
+  const parsed = parseVersionParts(match?.[2] ?? '');
+  if (!parsed) return true;
+  const order = compareVersions(version, parsed.triple);
+  switch (match?.[1] ?? '=') {
+    case '>':
+      return order > 0;
+    case '>=':
+      return order >= 0;
+    case '<':
+      return order < 0;
+    case '<=':
+      return order <= 0;
+    case '~': {
+      const ceiling: VersionTriple =
+        parsed.segments === 1
+          ? [parsed.triple[0] + 1, 0, 0]
+          : [parsed.triple[0], parsed.triple[1] + 1, 0];
+      return order >= 0 && compareVersions(version, ceiling) < 0;
+    }
+    case '^':
+      return (
+        order >= 0 && compareVersions(version, caretCeiling(parsed.triple, parsed.segments)) < 0
+      );
+    default:
+      return order === 0;
+  }
+}
+
+/** Whether an installed version falls inside a declared range. */
+function rangeAdmits(range: string, version: string): boolean {
+  const parsed = parseVersionParts(version);
+  if (!parsed) return true;
+  return range.split('||').some((alternative) =>
+    alternative
+      .trim()
+      .split(/\s+/)
+      .every((comparator) => comparatorAdmits(comparator, parsed.triple)),
+  );
+}
+
+// ── `bun outdated` row attribution ───────────────────────────────────
+
+/** Trailing workspace-type marker `bun outdated` appends to the package cell. */
+const OUTDATED_GROUP_MARKER = /\s*\((dev|peer|prod|optional)\)$/;
+
+/** One parsed `bun outdated` table row, resolved back to what package.json declares. */
+interface OutdatedRow {
+  /** Declared keys the row could belong to, in declaration order. */
+  candidates: string[];
+  current: string;
+  /** The declared key when attribution is unambiguous, else null. */
+  declaredKey: string | null;
+  /** The block the row belongs to; `bun outdated` leaves `prod` rows unmarked. */
+  group: DependencyGroup;
+  /** The row verbatim, used to key the rendered rewrite back to its line. */
+  line: string;
+  /** First cell as printed, marker included. */
+  rawName: string;
+  /** Resolved package name `bun outdated` printed. */
+  target: string;
+  update: string;
+}
+
+/**
+ * Maps a printed row back to the `package.json` keys that could have produced
+ * it. A target-name-only map is not enough: a direct dependency and one or more
+ * aliases can share a target, so candidates are narrowed by which declared
+ * range admits the installed version. When that still leaves more than one, the
+ * row is reported as ambiguous rather than attributed — an alias's allowlist
+ * entry must never stand in for a same-named direct dependency's finding.
+ */
+function attributeOutdatedRow(
+  target: string,
+  group: DependencyGroup,
+  current: string,
+): Pick<OutdatedRow, 'candidates' | 'declaredKey'> {
+  const matches = DECLARED_DEPENDENCIES.filter(
+    (declared) => declared.target === target && declared.group === group,
+  );
+  const candidates = matches.map((declared) => declared.key);
+  if (candidates.length <= 1) return { candidates, declaredKey: candidates[0] ?? null };
+
+  const admitting = matches.filter((declared) => rangeAdmits(declared.range, current));
+  return { candidates, declaredKey: admitting.length === 1 ? (admitting[0]?.key ?? null) : null };
+}
+
+/** Parses the package rows out of a `bun outdated` table, skipping its chrome. */
+function parseOutdatedRows(output: string): OutdatedRow[] {
+  const rows: OutdatedRow[] = [];
+  // `bun outdated` emits markdown-style rows (`| col1 | col2 | ... |`), so
+  // split('|') yields an empty leading cell — package data starts at index [1].
+  for (const line of output.split('\n')) {
+    if (!line.includes('|')) continue;
+    const cells = line.split('|').map((cell) => cell.trim());
+    const rawName = cells[1] ?? '';
+    // Skip table chrome: header row and separator (e.g., "---")
+    if (!rawName || rawName === 'Package' || /^-+$/.test(rawName)) continue;
+    const group = (OUTDATED_GROUP_MARKER.exec(rawName)?.[1] ?? 'prod') as DependencyGroup;
+    const target = rawName.replace(OUTDATED_GROUP_MARKER, '');
+    const current = cells[2] ?? '';
+    const update = (cells[3] ?? '').replace(/\*/g, '').trim();
+    rows.push({
+      ...attributeOutdatedRow(target, group, current),
+      current,
+      group,
+      line,
+      rawName,
+      target,
+      update,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Reprints the table with each row named by the dependency the project declares,
+ * so an alias row reads as `typescript-v6 (dev)` rather than `typescript`. Rows
+ * whose attribution is ambiguous keep the printed name and are called out below
+ * the table.
+ */
+function renderOutdatedTable(output: string): string {
+  if (!output.includes('|')) return output;
+  const attributed = new Map(parseOutdatedRows(output).map((row) => [row.line, row]));
+
+  const lines = output.split('\n').map((line) => {
+    const cell = line.split('|')[1];
+    if (cell === undefined || /^-+$/.test(cell.trim())) return { line, display: null };
+    const row = attributed.get(line);
+    let display = cell.trim();
+    if (row?.declaredKey && row.declaredKey !== row.target) {
+      display = row.group === 'prod' ? row.declaredKey : `${row.declaredKey} (${row.group})`;
+    }
+    return { line, display };
+  });
+
+  // Keep bun's own column width unless a declared key needs more room; the
+  // horizontal rules then grow by the same delta so the table stays square.
+  const headerCell = lines.find(({ display }) => display === 'Package')?.line.split('|')[1];
+  const baseWidth = Math.max((headerCell?.length ?? 2) - 2, 0);
+  const width = Math.max(baseWidth, ...lines.map(({ display }) => display?.length ?? 0));
+  const delta = width - baseWidth;
+  const rendered = lines.map(({ line, display }) => {
+    if (display === null) {
+      return delta > 0 && line.includes('|')
+        ? line.replace(/-+/, (run) => run.padEnd(run.length + delta, '-'))
+        : line;
+    }
+    return `| ${display.padEnd(width)} ${line.slice(line.indexOf('|', line.indexOf('|') + 1))}`;
+  });
+
+  const ambiguous = [...attributed.values()].filter(
+    (row) => row.candidates.length > 1 && row.declaredKey === null,
+  );
+  if (ambiguous.length === 0) return rendered.join('\n');
+  return [
+    ...rendered,
+    '',
+    ...ambiguous.map(
+      (row) =>
+        `! ${row.rawName} matches ${row.candidates.join(' and ')} — attribution is ambiguous, so no allowlist entry applies.`,
+    ),
+  ].join('\n');
+}
 
 /**
  * Parses `bun audit` output and classifies high/critical vulnerabilities as
  * direct (in our package.json) or upstream (transitive dependency we can't fix).
  *
- * Bun audit format per vulnerability block:
- *   <package>  <version-range>        ← header (no indent, 2+ spaces before range)
- *     <parent> › <child> [› ...]      ← dependency path (indented, › = transitive)
+ * Bun audit format per vulnerability block — Bun 1.4 changed the header token
+ * and the path separator, so both shapes are accepted:
+ *   <package>  <version-range>        ← header, Bun <1.4 (no indent, 2+ spaces before range)
+ *   <package>@<version>               ← header, Bun ≥1.4
+ *     <parent> › <child> [› ...]      ← dependency path (indented; › or, Bun ≥1.4, > = transitive)
+ *     (direct dependency)             ← dependency path of a direct dependency, Bun ≥1.4
  *     <severity>: <description>       ← advisory (indented)
  *
  * Returns null if parsing yields no results (caller should fall back to default behavior).
@@ -308,8 +571,10 @@ function classifyAuditVulns(output: string): { direct: string[]; upstream: strin
     let i = 0;
 
     while (i < lines.length) {
-      // Package header: non-indented, name followed by 2+ spaces then version constraint
-      const pkgMatch = lines[i]?.match(/^([@\w][\w./-]*)\s{2,}(.+)$/);
+      // Package header: non-indented `name  range` (2+ spaces, Bun <1.4) or
+      // `name@version` (Bun ≥1.4). A scoped name leads with `@`, so only a
+      // later `@` splits the Bun 1.4 form.
+      const pkgMatch = lines[i]?.match(/^(@?\w[\w./-]*)(?:\s{2,}|@)(\S.*)$/);
       if (!pkgMatch) {
         i++;
         continue;
@@ -334,14 +599,15 @@ function classifyAuditVulns(output: string): { direct: string[]; upstream: strin
 
       if (!hasHighCritical) continue;
 
-      // Direct if: the vulnerable package is in our package.json,
-      // or any dependency path lacks › (meaning it's not pulled in transitively)
+      // Direct if: the vulnerable package is in our package.json, or any
+      // dependency path lacks a transitive separator — U+203A `›` (Bun <1.4)
+      // or `>` (Bun ≥1.4). Bun 1.4's literal `(direct dependency)` path has neither.
       const pkgName = pkg ?? '';
-      const isDirect = DIRECT_DEPS.has(pkgName) || paths.some((p) => !p.includes('\u203a'));
+      const isDirect = DIRECT_DEPS.has(pkgName) || paths.some((p) => !/[\u203a>]/.test(p));
       if (isDirect) {
         direct.push(`${pkgName} ${versionRange}`);
       } else {
-        const via = paths[0]?.split(/\s*\u203a\s*/)[0] ?? 'unknown';
+        const via = paths[0]?.split(/\s*[\u203a>]\s*/)[0] ?? 'unknown';
         upstream.push(`${pkgName} ${versionRange} (via ${via})`);
       }
     }
@@ -430,23 +696,25 @@ const ALL_CHECKS: Check[] = [
     canFix: false,
     getCommand: () => ['bun', 'run', 'scripts/lint-mcp.ts'],
     tip: (c) =>
-      `Fix definition errors above — each diagnostic links to its rule in ${c.bold('skills/api-linter/SKILL.md')}.`,
+      `Fix definition errors above — each diagnostic links to its rule in ${c.bold('framework-skills/api-linter/SKILL.md')}.`,
   },
   {
     name: 'Packaging',
     flag: '--no-packaging',
     canFix: false,
     // Validates env var alignment between manifest.json (MCPB bundle) and
-    // server.json (MCP Registry), plus plugin marketplace manifests (#240).
-    // Runs when manifest.json OR any plugin manifest is present; skipped cleanly
-    // when none exist — consumers on an HTTP-only deploy are unaffected.
+    // server.json (MCP Registry), plus plugin marketplace manifests (#240), and
+    // the bundle-content guards on .mcpbignore (#343). Runs when any of those
+    // inputs is present; skipped cleanly when none exist — consumers on an
+    // HTTP-only deploy are unaffected.
     getCommand: () => {
       const hasManifest = existsSync(path.join(ROOT_DIR, 'manifest.json'));
       const hasPluginManifest =
         existsSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json')) ||
         existsSync(path.join(ROOT_DIR, '.codex-plugin/plugin.json')) ||
         existsSync(path.join(ROOT_DIR, '.codex-plugin/mcp.json'));
-      if (!hasManifest && !hasPluginManifest) return null;
+      const hasMcpbIgnore = existsSync(path.join(ROOT_DIR, '.mcpbignore'));
+      if (!hasManifest && !hasPluginManifest && !hasMcpbIgnore) return null;
       return ['bun', 'run', 'scripts/lint-packaging.ts'];
     },
     tip: (c) =>
@@ -503,16 +771,19 @@ const ALL_CHECKS: Check[] = [
     name: 'Skills Sync',
     flag: '--no-skills-sync',
     canFix: false,
-    // Compares canonical skills/ against local mirrors (.agents/skills, .claude/skills).
-    // Skipped when skills/ or both mirrors are absent (non-mirrored projects).
-    // Drift is demoted to a warning via isSuccess — intentional ignores live in
-    // devcheck.config.json `skillsSync.ignore`.
+    // Compares canonical framework-skills/ against local mirrors (.agents/skills, .claude/skills).
+    // Skipped when framework-skills/ or both mirrors are absent (non-mirrored projects),
+    // except that a pre-0.13 `skills/` tree always runs — absent or alongside
+    // `framework-skills/` — so the script's migration message surfaces. Drift is demoted to
+    // a warning via isSuccess — intentional ignores live in devcheck.config.json
+    // `skillsSync.ignore`.
     getCommand: () => {
-      const hasSkills = existsSync(path.join(ROOT_DIR, 'skills'));
+      const hasSkills = existsSync(path.join(ROOT_DIR, 'framework-skills'));
+      const hasLegacySkills = existsSync(path.join(ROOT_DIR, 'skills'));
       const hasMirrors =
         existsSync(path.join(ROOT_DIR, '.agents/skills')) ||
         existsSync(path.join(ROOT_DIR, '.claude/skills'));
-      if (!hasSkills || !hasMirrors) return null;
+      if (!hasLegacySkills && (!hasSkills || !hasMirrors)) return null;
       return ['bun', 'run', 'scripts/check-skills-sync.ts'];
     },
     isSuccess: (result) => {
@@ -521,18 +792,18 @@ const ALL_CHECKS: Check[] = [
       return { success: true, warning: firstLine };
     },
     tip: (c) =>
-      `Propagate ${c.bold('skills/')} to ${c.bold('.agents/skills/')} and ${c.bold('.claude/skills/')}, or add entries to ${c.bold('devcheck.config.json')} ${c.bold('skillsSync.ignore')}.`,
+      `Propagate ${c.bold('framework-skills/')} to ${c.bold('.agents/skills/')} and ${c.bold('.claude/skills/')}, or add entries to ${c.bold('devcheck.config.json')} ${c.bold('skillsSync.ignore')}.`,
   },
   {
     name: 'Skill Versions',
     flag: '--no-skill-versions',
     canFix: false,
-    // Flags skills/<name>/SKILL.md body changes (vs HEAD) that lack a metadata.version
-    // bump (#99). Skipped when skills/ is absent. Drift is demoted to a warning via
+    // Flags framework-skills/<name>/SKILL.md body changes (vs HEAD) that lack a metadata.version
+    // bump (#99). Skipped when framework-skills/ is absent. Drift is demoted to a warning via
     // isSuccess — the typo/whitespace carve-out lives in devcheck.config.json
     // `skillVersions.ignore`.
     getCommand: () => {
-      if (!existsSync(path.join(ROOT_DIR, 'skills'))) return null;
+      if (!existsSync(path.join(ROOT_DIR, 'framework-skills'))) return null;
       return ['bun', 'run', 'scripts/check-skill-versions.ts'];
     },
     isSuccess: (result) => {
@@ -588,6 +859,26 @@ const ALL_CHECKS: Check[] = [
     tip: () => 'Check TypeScript errors in your IDE or the console output.',
   },
   {
+    name: 'TypeScript (Worker)',
+    flag: '--no-types-worker',
+    canFix: false,
+    // The workerd type environment is its own program: Cloudflare's ambient
+    // globals cannot share one with @types/node's (#397). It reads the built
+    // declarations, so it only has something to check after a build.
+    getCommand: (ctx) => {
+      if (!existsSync(path.join(ctx.rootDir, 'tsconfig.worker.json'))) return null;
+      if (!existsSync(path.join(ctx.rootDir, 'dist'))) return null;
+      return [
+        path.join(ctx.rootDir, 'node_modules', '.bin', 'tsc'),
+        '--project',
+        'tsconfig.worker.json',
+        '--noEmit',
+      ];
+    },
+    tip: (c) =>
+      `Build first (${c.bold('bun run build')}), then ${c.bold('bun run typecheck:worker')}.`,
+  },
+  {
     name: 'Tests',
     flag: '--test',
     canFix: false,
@@ -615,7 +906,7 @@ const ALL_CHECKS: Check[] = [
   {
     name: 'Security Audit',
     flag: '--no-audit',
-    canFix: false, // audit --fix exists but often requires manual review.
+    canFix: false, // `audit fix` exists but often requires manual review.
     slowCheck: true,
     getCommand: () => [PM_CMD, 'audit'],
     isSuccess: (result, _mode) => {
@@ -663,7 +954,7 @@ const ALL_CHECKS: Check[] = [
       return true;
     },
     tip: (c) =>
-      `Direct dependency vulnerabilities found. Run ${c.bold(`${PM_CMD} update`)} or ${c.bold(`${PM_CMD} audit --fix`)} to resolve.`,
+      `Direct dependency vulnerabilities found. Run ${c.bold(`${PM_CMD} audit fix`)} or ${c.bold(`${PM_CMD} update <pkg>`)} to resolve.`,
   },
   {
     name: 'Dependencies (Outdated)',
@@ -679,34 +970,21 @@ const ALL_CHECKS: Check[] = [
       const output = result.stdout.trim();
       if (result.exitCode !== 0 && !output.includes('|')) return false;
 
-      // Parse the tabular output. `bun outdated` emits markdown-style rows
-      // (`| col1 | col2 | ... |`), so split('|') yields an empty leading cell —
-      // package data starts at index [1]. Strip the trailing `(dev|peer|prod|optional)`
-      // workspace-type marker so the allowlist takes the bare package name.
-      const lines = output.split('\n');
-      const stripWorkspaceMarker = (cell: string): string =>
-        cell.replace(/\s*\((?:dev|peer|prod|optional)\)$/, '');
-      const packageLines = lines.filter((line) => {
-        if (!line.includes('|')) return false;
-        // Skip table chrome: header row and separator (e.g., "---")
-        const firstCell = line.split('|')[1]?.trim() ?? '';
-        if (!firstCell || firstCell === 'Package' || /^-+$/.test(firstCell)) return false;
-        return true;
-      });
-
       // A row is a real finding only if it's neither allowlisted, a peer range,
       // nor a version held back by bunfig's `minimumReleaseAge` supply-chain guard.
-      const unexpected = packageLines.filter((line) => {
-        const cells = line.split('|').map((cell) => cell.trim());
-        const rawName = cells[1] ?? '';
-        const pkgName = stripWorkspaceMarker(rawName);
-        if (OUTDATED_ALLOWLIST.has(pkgName)) return false;
+      const unexpected = parseOutdatedRows(output).filter((row) => {
+        // The allowlist is keyed on the `package.json` key, so an aliased row
+        // matches through its resolved declaration. Where attribution stayed
+        // ambiguous, no entry applies — suppressing the row would risk hiding a
+        // same-named direct dependency behind an alias's exemption.
+        const ambiguous = row.candidates.length > 1 && row.declaredKey === null;
+        if (!ambiguous && OUTDATED_ALLOWLIST.has(row.declaredKey ?? row.target)) return false;
 
         // A peerDependency range declares the *lowest* version supported, not
         // the version to track — widening it as upstream publishes only narrows
         // what consumers may install. Currency for the versions actually
         // exercised is enforced through the matching devDependency row.
-        if (rawName.endsWith('(peer)')) return false;
+        if (row.group === 'peer') return false;
 
         // `Update` is the newest version installable under the declared range;
         // `Latest` ignores the range. Update === Current means there is nothing
@@ -715,13 +993,12 @@ const ALL_CHECKS: Check[] = [
         // 13.0.1). Crossing that cap is a deliberate range change, i.e.
         // maintenance work rather than a gate failure. The gate fails on what
         // `bun update` would actually change: being behind within the range.
-        const current = cells[2] ?? '';
-        const update = (cells[3] ?? '').replace(/\*/g, '').trim();
-        return !(current !== '' && update === current);
+        return !(row.current !== '' && row.update === row.current);
       });
 
       return unexpected.length === 0;
     },
+    transformOutput: (result) => renderOutdatedTable(result.stdout),
     tip: (c) =>
       `Run ${c.bold(`${PM_CMD} update`)} to upgrade; the ${c.bold('maintenance')} skill then investigates changelogs and adopts upstream changes. Configure allowlist in ${c.bold('devcheck.config.json')}.`,
   },
@@ -965,7 +1242,7 @@ function parseArgs(args: string[]): Omit<AppContext, 'rootDir' | 'stagedFiles'> 
 }
 
 async function runCheck(check: Check, ctx: AppContext): Promise<CommandResult> {
-  const { name, getCommand, isSuccess } = check;
+  const { name, getCommand, isSuccess, transformOutput } = check;
   const log: string[] = [];
   const baseResult: CommandResult = {
     checkName: name,
@@ -1066,6 +1343,11 @@ async function runCheck(check: Check, ctx: AppContext): Promise<CommandResult> {
     if (warning) {
       finalResult.warning = warning;
     }
+  }
+
+  // 8. Rewrite the displayed output — after isSuccess has read the tool's own.
+  if (transformOutput) {
+    finalResult.stdout = transformOutput(finalResult);
   }
 
   log.push(UI.formatCheckResult(finalResult, uiMode));
