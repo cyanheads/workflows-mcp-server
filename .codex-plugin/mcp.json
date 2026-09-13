@@ -2,6 +2,7 @@
   "workflows-mcp-server": {
     "command": "npx",
     "args": ["-y", "@cyanheads/workflows-mcp-server"],
+    "env_vars": ["WORKFLOWS_DIR", "GLOBAL_INSTRUCTIONS_PATH", "WATCHER_DEBOUNCE_MS", "MCP_LOG_LEVEL"],
     "env": {
       "MCP_TRANSPORT_TYPE": "stdio"
     }

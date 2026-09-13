@@ -23,7 +23,11 @@
       "env": {
         "MCP_TRANSPORT_TYPE": "stdio",
         "MCP_AUTH_MODE": "none",
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "WORKFLOWS_DIR": "${user_config.WORKFLOWS_DIR}",
+        "GLOBAL_INSTRUCTIONS_PATH": "${user_config.GLOBAL_INSTRUCTIONS_PATH}",
+        "WATCHER_DEBOUNCE_MS": "${user_config.WATCHER_DEBOUNCE_MS}",
+        "MCP_LOG_LEVEL": "${user_config.MCP_LOG_LEVEL}"
       }
     }
   },
@@ -32,5 +36,30 @@
   },
   "tools_generated": true,
   "prompts_generated": true,
-  "user_config": {}
+  "user_config": {
+    "WORKFLOWS_DIR": {
+      "type": "string",
+      "title": "Workflow directory",
+      "description": "Absolute path to your workflow library. Leave blank to use ./workflows-yaml.",
+      "default": ""
+    },
+    "GLOBAL_INSTRUCTIONS_PATH": {
+      "type": "string",
+      "title": "Global instructions path",
+      "description": "Path to the global instructions markdown file. Leave blank to derive it from the workflow directory.",
+      "default": ""
+    },
+    "WATCHER_DEBOUNCE_MS": {
+      "type": "string",
+      "title": "Watcher debounce",
+      "description": "Milliseconds to debounce filesystem changes. Leave blank to use 500.",
+      "default": ""
+    },
+    "MCP_LOG_LEVEL": {
+      "type": "string",
+      "title": "Log level",
+      "description": "Minimum RFC 5424 log level: debug, info, notice, warning, error, crit, alert, or emerg. Leave blank to use info.",
+      "default": ""
+    }
+  }
 }
