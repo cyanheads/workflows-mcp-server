@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.2](changelog/0.3.x/0.3.2.md) — 2026-09-13
+
+The development skill tree moves out of the plugin-loaded skills/ path, and MCPB and plugin installers now collect the workflow directory, instructions path, debounce, and log level. Adopts mcp-ts-core 0.13.0; the Bun engines floor rises to 1.4.0.
+
 ## [0.3.1](changelog/0.3.x/0.3.1.md) — 2026-09-04
 
 Server identity now resolves from the served package instead of the caller's working directory, pre-init logs are no longer dropped, and MCP_SESSION_MODE settles to stateless. mcp-ts-core bumps to 0.12.5, zod to 4.5.4.

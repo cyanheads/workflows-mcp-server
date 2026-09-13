@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2026-08-21 23:06:07
+Generated on: 2026-09-13 17:50:54
 
 ```text
 workflows-mcp-server/
@@ -29,30 +29,10 @@ workflows-mcp-server/
 ├── docs/
 │   ├── design.md
 │   └── idea.md
-├── scripts/
-│   ├── build-changelog.ts
-│   ├── build.ts
-│   ├── check-dependency-specifiers.ts
-│   ├── check-docs-sync.ts
-│   ├── check-framework-antipatterns.ts
-│   ├── check-skill-versions.ts
-│   ├── check-skills-sync.ts
-│   ├── clean-mcpb.ts
-│   ├── clean.ts
-│   ├── devcheck.ts
-│   ├── lint-mcp.ts
-│   ├── lint-packaging.ts
-│   ├── list-skills.ts
-│   ├── release-github.ts
-│   └── tree.ts
-├── skills/
+├── framework-skills/
 │   ├── add-app-tool/
 │   │   └── SKILL.md
-│   ├── add-export/
-│   │   └── SKILL.md
 │   ├── add-prompt/
-│   │   └── SKILL.md
-│   ├── add-provider/
 │   │   └── SKILL.md
 │   ├── add-resource/
 │   │   └── SKILL.md
@@ -120,6 +100,8 @@ workflows-mcp-server/
 │   │   └── SKILL.md
 │   ├── release-and-publish/
 │   │   └── SKILL.md
+│   ├── release-pr-review/
+│   │   └── SKILL.md
 │   ├── report-issue-framework/
 │   │   └── SKILL.md
 │   ├── report-issue-local/
@@ -134,6 +116,22 @@ workflows-mcp-server/
 │   │   └── SKILL.md
 │   └── tool-defs-analysis/
 │       └── SKILL.md
+├── scripts/
+│   ├── build-changelog.ts
+│   ├── build.ts
+│   ├── check-dependency-specifiers.ts
+│   ├── check-docs-sync.ts
+│   ├── check-framework-antipatterns.ts
+│   ├── check-skill-versions.ts
+│   ├── check-skills-sync.ts
+│   ├── clean-mcpb.ts
+│   ├── clean.ts
+│   ├── devcheck.ts
+│   ├── lint-mcp.ts
+│   ├── lint-packaging.ts
+│   ├── list-skills.ts
+│   ├── release-github.ts
+│   └── tree.ts
 ├── src/
 │   ├── config/
 │   │   └── server-config.ts
@@ -156,6 +154,8 @@ workflows-mcp-server/
 │   │       └── workflow-index-service.ts
 │   └── index.ts
 ├── tests/
+│   ├── config/
+│   │   └── server-config.test.ts
 │   ├── prompts/
 │   ├── resources/
 │   ├── services/
