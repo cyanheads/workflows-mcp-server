@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.3](changelog/0.3.x/0.3.3.md) — 2026-09-19
+
+The workflow index's fs.watch handle and debounce timer are released on shutdown so the process exits after SIGTERM, and createApp declares a stateless session posture in src/. Adopts mcp-ts-core 0.13.6, which rejects out-of-schema tool arguments as InvalidParams with a reason and recovery hint.
+
 ## [0.3.2](changelog/0.3.x/0.3.2.md) — 2026-09-13
 
 The development skill tree moves out of the plugin-loaded skills/ path, and MCPB and plugin installers now collect the workflow directory, instructions path, debounce, and log level. Adopts mcp-ts-core 0.13.0; the Bun engines floor rises to 1.4.0.
