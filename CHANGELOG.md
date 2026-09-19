@@ -4,7 +4,7 @@ All notable changes to this project. Each entry links to its full per-version fi
 
 ## [0.3.3](changelog/0.3.x/0.3.3.md) — 2026-09-19
 
-The workflow index's fs.watch handle and debounce timer are released on shutdown so the process exits after SIGTERM, and createApp declares a stateless session posture in src/. Adopts mcp-ts-core 0.13.6, which rejects out-of-schema tool arguments as InvalidParams with a reason and recovery hint.
+The workflow index's fs.watch handle and debounce timer are released on shutdown so no ref'd handle outlives teardown, and createApp declares a stateless session posture in src/. Adopts mcp-ts-core 0.13.6, which adds a reason and a recovery hint to every rejected tool argument and normalizes argument keys before validation.
 
 ## [0.3.2](changelog/0.3.x/0.3.2.md) — 2026-09-13
 
