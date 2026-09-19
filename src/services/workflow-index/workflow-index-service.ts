@@ -113,6 +113,7 @@ export class WorkflowIndexService {
   private _ready = false;
   private _watcherController: AbortController | undefined;
   private _debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private _shutdown = false;
   private readonly workflowsDir: string;
   private readonly globalInstructionsPath: string;
   private readonly watcherDebounceMs: number;
@@ -143,6 +144,9 @@ export class WorkflowIndexService {
     // writePermanent()/writeTemp().
     await fs.mkdir(this.workflowsDir, { recursive: true });
     await this.rebuild();
+    // initWorkflowIndexService() does not await this, so a shutdown can land mid-build. Starting
+    // the watcher afterwards would open a ref'd fs.watch nothing aborts.
+    if (this._shutdown) return;
     this.startWatcher();
   }
 
@@ -150,9 +154,11 @@ export class WorkflowIndexService {
    * Release the filesystem watcher and any pending debounced rebuild.
    *
    * Both handles are ref'd — a pending `setTimeout` and an open `fs.watch` keep the event loop
-   * alive — so this is what the `createApp({ teardown })` hook calls on every shutdown path.
+   * alive — so this is what the `createApp({ teardown })` hook calls on every shutdown path. It
+   * also bars an in-flight {@link init} from starting a watcher after the fact.
    */
   shutdown(): void {
+    this._shutdown = true;
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     this._debounceTimer = undefined;
     this._watcherController?.abort();

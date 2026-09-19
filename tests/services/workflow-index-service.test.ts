@@ -754,6 +754,17 @@ describe('WorkflowIndexService', () => {
       svc.shutdown();
     }).not.toThrow();
   });
+
+  it('a shutdown during init leaves no watcher behind', async () => {
+    // initWorkflowIndexService() starts init() without awaiting it, so teardown can land while the
+    // first index build is still running. The watcher must not open after that point.
+    const initializing = svc.init();
+    svc.shutdown();
+    await initializing;
+
+    const internals = svc as unknown as ServiceInternals;
+    expect(internals._watcherController).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
