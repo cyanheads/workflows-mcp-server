@@ -7,13 +7,30 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { AppConfig } from '@cyanheads/mcp-ts-core/config';
+import type { StorageService } from '@cyanheads/mcp-ts-core/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { slugify, WorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
+import {
+  getWorkflowIndexService,
+  initWorkflowIndexService,
+  shutdownWorkflowIndexService,
+  slugify,
+  WorkflowIndexService,
+} from '@/services/workflow-index/workflow-index-service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The two ref'd handles `shutdown()` releases. Read directly because neither has a public
+ * accessor and the service exposes no test-only surface to add one.
+ */
+type ServiceInternals = {
+  _watcherController?: AbortController;
+  _debounceTimer?: ReturnType<typeof setTimeout>;
+};
 
 function makeWorkflowYaml(overrides: Record<string, unknown> = {}): string {
   const base = {
@@ -695,6 +712,90 @@ describe('WorkflowIndexService', () => {
     for (const m of matches) {
       expect(m.workflow.name).toBe('test-workflow');
     }
+  });
+
+  // --- shutdown ---
+
+  it('shutdown aborts the filesystem watcher', async () => {
+    await svc.init();
+
+    const internals = svc as unknown as ServiceInternals;
+    expect(internals._watcherController?.signal.aborted).toBe(false);
+
+    svc.shutdown();
+
+    expect(internals._watcherController?.signal.aborted).toBe(true);
+  });
+
+  it('shutdown clears a pending debounced rebuild', async () => {
+    await svc.init();
+
+    const internals = svc as unknown as ServiceInternals;
+    // The watcher loop is the only writer of _debounceTimer, and live fs.watch event delivery is
+    // timing-dependent under parallel FS load (see the GH #11 note above), so the pending timer is
+    // planted directly. A ref'd timer surviving shutdown is what keeps the event loop alive.
+    let fired = false;
+    internals._debounceTimer = setTimeout(() => {
+      fired = true;
+    }, 20);
+
+    svc.shutdown();
+
+    expect(internals._debounceTimer).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(fired).toBe(false);
+  });
+
+  it('shutdown is idempotent', async () => {
+    await svc.init();
+
+    svc.shutdown();
+    expect(() => {
+      svc.shutdown();
+    }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Module lifecycle — the init/teardown pair createApp() wires to setup/teardown
+// ---------------------------------------------------------------------------
+
+describe('initWorkflowIndexService / shutdownWorkflowIndexService', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkTmpDir();
+  });
+
+  afterEach(async () => {
+    shutdownWorkflowIndexService();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('tears down the live service and clears the accessor', async () => {
+    initWorkflowIndexService(
+      {} as AppConfig,
+      {} as StorageService,
+      dir,
+      path.join(dir, 'global_instructions.md'),
+      10,
+    );
+    await waitFor(() => getWorkflowIndexService().ready);
+
+    const live = getWorkflowIndexService();
+    const internals = live as unknown as ServiceInternals;
+    expect(internals._watcherController?.signal.aborted).toBe(false);
+
+    shutdownWorkflowIndexService();
+
+    expect(internals._watcherController?.signal.aborted).toBe(true);
+    expect(() => getWorkflowIndexService()).toThrow(/not initialized/);
+  });
+
+  it('is a no-op when no service was initialized', () => {
+    expect(() => {
+      shutdownWorkflowIndexService();
+    }).not.toThrow();
   });
 });
 

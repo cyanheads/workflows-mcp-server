@@ -8,7 +8,10 @@ import * as path from 'node:path';
 import { createApp } from '@cyanheads/mcp-ts-core';
 import { getServerConfig } from './config/server-config.js';
 import { allToolDefinitions } from './mcp-server/tools/definitions/index.js';
-import { initWorkflowIndexService } from './services/workflow-index/workflow-index-service.js';
+import {
+  initWorkflowIndexService,
+  shutdownWorkflowIndexService,
+} from './services/workflow-index/workflow-index-service.js';
 
 await createApp({
   name: 'workflows-mcp-server',
@@ -20,6 +23,13 @@ await createApp({
     'A declarative workflow library. Use workflow_list to discover available workflows, ' +
     'workflow_get to retrieve a full workflow definition with global instructions, ' +
     'workflow_create to persist a new workflow, and workflow_create_temp to store a temporary one-shot plan.',
+
+  /**
+   * No tool gates on ctx.requestInput, so there is nothing a session-backed 2025-era
+   * elicitation round trip would serve. Declared here so a source run resolves the same
+   * posture the Dockerfile and .env.example already set; MCP_SESSION_MODE still overrides.
+   */
+  sessionMode: 'stateless',
 
   setup(core) {
     const cfg = getServerConfig();
@@ -40,5 +50,10 @@ await createApp({
       globalInstructionsPath,
       cfg.watcherDebounceMs,
     );
+  },
+
+  /** Releases the index service's fs.watch handle and its pending debounce timer. */
+  teardown() {
+    shutdownWorkflowIndexService();
   },
 });

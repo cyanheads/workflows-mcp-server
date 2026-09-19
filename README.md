@@ -215,7 +215,7 @@ cp .env.example .env
 | `WATCHER_DEBOUNCE_MS` | Milliseconds to debounce filesystem change events before rebuilding the index. | `500` |
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
 | `MCP_HTTP_PORT` | Port for HTTP server. | `3010` |
-| `MCP_SESSION_MODE` | HTTP sessions: `auto`, `stateful`, or `stateless`. This server needs no caller-input round trips. | `stateless` in Docker and `.env.example`; framework `auto` resolves to `stateful` |
+| `MCP_SESSION_MODE` | HTTP sessions: `auto`, `stateful`, or `stateless`. This server needs no caller-input round trips; setting the variable overrides the declared posture. | `stateless`, declared in `src/index.ts` |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
 | `OTEL_ENABLED` | Enable [OpenTelemetry instrumentation](https://github.com/cyanheads/mcp-ts-core/tree/main/docs/telemetry) (spans, metrics, completion logs). | `false` |

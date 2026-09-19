@@ -146,9 +146,15 @@ export class WorkflowIndexService {
     this.startWatcher();
   }
 
-  /** Tear down the watcher. */
+  /**
+   * Release the filesystem watcher and any pending debounced rebuild.
+   *
+   * Both handles are ref'd — a pending `setTimeout` and an open `fs.watch` keep the event loop
+   * alive — so this is what the `createApp({ teardown })` hook calls on every shutdown path.
+   */
   shutdown(): void {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    this._debounceTimer = undefined;
     this._watcherController?.abort();
   }
 
@@ -466,6 +472,15 @@ export function initWorkflowIndexService(
   _service.init().catch((err) => {
     logError('WorkflowIndexService init failed', err);
   });
+}
+
+/**
+ * Release the live service and clear the accessor — the `initWorkflowIndexService` counterpart,
+ * called from `createApp({ teardown })`. Idempotent: a second call is a no-op.
+ */
+export function shutdownWorkflowIndexService(): void {
+  _service?.shutdown();
+  _service = undefined;
 }
 
 export function getWorkflowIndexService(): WorkflowIndexService {
