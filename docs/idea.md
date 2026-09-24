@@ -1,5 +1,7 @@
 # workflows-mcp-server — idea & requirements
 
+> The original concept document, kept as written. [`design.md`](design.md) supersedes it wherever the two differ.
+
 A declarative workflow library that LLM agents query for multi-step playbooks. The server stores YAML workflow definitions and returns them on request, augmented with global instructions. **It does not execute workflows** — the consuming agent reads the returned plan and orchestrates the steps through its own MCP tool surface.
 
 ## Why it exists
