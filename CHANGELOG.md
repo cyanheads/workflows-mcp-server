@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.4.0](changelog/0.4.x/0.4.0.md) — 2026-09-23 · ⚠️ Breaking
+
+workflow_delete now confirms the resolved target with the user before deleting, requiring a stateful HTTP session; temporary drafts persist until deleted instead of expiring; and workflow identity (version, name, filename) is canonicalized and hashed, fixing lookup, storage, and concurrency bugs across all five tools.
+
 ## [0.3.3](changelog/0.3.x/0.3.3.md) — 2026-09-19
 
 The workflow index's fs.watch handle and debounce timer are released on shutdown so no ref'd handle outlives teardown, and createApp declares a stateless session posture in src/. Adopts mcp-ts-core 0.13.6, which adds a reason and a recovery hint to every rejected tool argument and normalizes argument keys before validation.
