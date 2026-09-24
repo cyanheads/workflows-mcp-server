@@ -774,39 +774,24 @@ describe('WorkflowIndexService', () => {
 
   // --- delete targets (GH #17, #18) ---
 
-  it('resolveTarget names the entry by key, source, and path relative to the root (GH #17)', async () => {
+  it('names the confirmation target by key, source, and path relative to the root (GH #17)', async () => {
     await svc.init();
     const permanent = await svc.writePermanent(permanentWorkflow({ name: 'Target Probe' }));
     const draft = await svc.writeTemp(tempWorkflow({ name: 'Target Probe', version: '2.0.0' }));
 
-    expect(svc.resolveTarget('Target Probe', '1.0.0')).toEqual({
+    expect((await svc.requestDeleteConfirmation('Target Probe', '1.0.0')).target).toEqual({
       name: 'Target Probe',
       version: '1.0.0',
       source: 'permanent',
       path: path.relative(dir, permanent),
     });
     // An omitted version resolves to the highest version across both sources.
-    expect(svc.resolveTarget('Target Probe')).toEqual({
+    expect((await svc.requestDeleteConfirmation('Target Probe', undefined)).target).toEqual({
       name: 'Target Probe',
       version: '2.0.0',
       source: 'temp',
       path: path.join('temp', path.basename(draft.filePath)),
     });
-  });
-
-  it('resolveTarget throws tagged not_found for an unknown name or version (GH #17)', () => {
-    for (const lookup of [
-      () => svc.resolveTarget('nope'),
-      () => svc.resolveTarget('nope', '1.0.0'),
-    ]) {
-      let err: unknown;
-      try {
-        lookup();
-      } catch (e: unknown) {
-        err = e;
-      }
-      expect((err as { _reason?: string })._reason).toBe('not_found');
-    }
   });
 
   it('deletes the temp draft when it is the highest version across sources (GH #18)', async () => {
@@ -820,7 +805,10 @@ describe('WorkflowIndexService', () => {
 
     await expect(fs.stat(draft.filePath)).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await fs.stat(permanent)).isFile()).toBe(true);
-    expect(svc.resolveTarget('Mixed')).toMatchObject({ version: '1.0.0', source: 'permanent' });
+    expect(svc.findWorkflow('Mixed')).toMatchObject({
+      workflow: { version: '1.0.0' },
+      isTemp: false,
+    });
   });
 
   it('keeps a temp draft across a restart on the same directory (GH #18)', async () => {
@@ -927,7 +915,12 @@ describe('WorkflowIndexService', () => {
     const { id, target } = await svc.requestDeleteConfirmation('Hashed', '1.0.0');
 
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    expect(target).toEqual(svc.resolveTarget('Hashed', '1.0.0'));
+    expect(target).toEqual({
+      name: 'Hashed',
+      version: '1.0.0',
+      source: 'permanent',
+      path: path.relative(dir, filePath),
+    });
     expect(svc.takeDeleteConfirmation(id)).toEqual({
       ...target,
       contentHash: createHash('sha256')

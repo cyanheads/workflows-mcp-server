@@ -364,19 +364,11 @@ export class WorkflowIndexService {
     return matches[0];
   }
 
-  /**
-   * Resolve a name and optional version the way {@link findWorkflow} does — an omitted version
-   * picks the highest across permanent workflows and temporary drafts — and describe the entry
-   * as a {@link WorkflowTarget}. Throws a tagged `not_found` error when nothing matches.
-   */
-  resolveTarget(name: string, version?: string): WorkflowTarget {
-    return this.resolveEntry(name, version).target;
-  }
-
   // --- Delete confirmations ---
 
   /**
-   * Resolve a delete target ({@link resolveTarget}), hash its file, and record a pending
+   * Resolve a delete target the way {@link findWorkflow} does — an omitted version picks the
+   * highest across permanent workflows and temporary drafts — hash its file, and record a pending
    * confirmation for it under a random single-use id. The id is all that travels to the client:
    * the record stays here, so a confirmation this server never issued, already redeemed, or let
    * expire ({@link DELETE_CONFIRMATION_TTL_MS}) cannot be presented. Runs in the mutation queue
