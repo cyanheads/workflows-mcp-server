@@ -6,7 +6,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the service module before importing the tool
@@ -36,6 +36,7 @@ async function writeWorkflow(
   version: string,
   category: string,
   tags?: string[],
+  fileName = name,
 ): Promise<void> {
   const catDir = path.join(dir, 'categories', subDir);
   await fs.mkdir(catDir, { recursive: true });
@@ -55,7 +56,18 @@ async function writeWorkflow(
   lines.push('  - server: test-server');
   lines.push('    tool: test_tool');
 
-  await fs.writeFile(path.join(catDir, `${name}.yaml`), `${lines.join('\n')}\n`, 'utf-8');
+  await fs.writeFile(path.join(catDir, `${fileName}.yaml`), `${lines.join('\n')}\n`, 'utf-8');
+}
+
+/** Rebuild the index after writing extra fixtures, then point the tool at it. */
+async function reindex(svc: WorkflowIndexService): Promise<void> {
+  await svc.init();
+  vi.mocked(getWorkflowIndexService).mockReturnValue(svc);
+}
+
+/** `## <name> v<version>` headings from the format() text, in render order. */
+function renderedHeadings(text: string): string[] {
+  return [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]!);
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +102,7 @@ describe('workflowList', () => {
   afterEach(async () => {
     svc.shutdown();
     vi.restoreAllMocks();
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
 
   // --- happy paths ---
@@ -332,5 +344,128 @@ describe('workflowList', () => {
     const result = await workflowList.handler(workflowList.input.parse({}), ctx);
     expect(result.totalCount).toBe(3);
     expect((getEnrichment(ctx) as { notice?: string }).notice).toBeUndefined();
+  });
+
+  // --- padded filter values (GH #15) ---
+
+  it('trims a padded query before matching (GH #15)', async () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const result = await workflowList.handler(workflowList.input.parse({ query: ' pubmed ' }), ctx);
+    expect(result.totalCount).toBe(1);
+    expect(result.workflows[0]!.name).toBe('search-pubmed');
+  });
+
+  it('trims a padded category before matching (GH #15)', async () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const result = await workflowList.handler(
+      workflowList.input.parse({ category: '  Git  ' }),
+      ctx,
+    );
+    expect(result.totalCount).toBe(2);
+    expect(result.workflows.map((w) => w.name)).toEqual(['git-branch', 'git-wrap-up']);
+  });
+
+  it('trims each padded tag before the case-insensitive AND match (GH #15)', async () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const single = await workflowList.handler(workflowList.input.parse({ tags: [' git '] }), ctx);
+    expect(single.totalCount).toBe(2);
+
+    const both = await workflowList.handler(
+      workflowList.input.parse({ tags: [' GIT', 'Daily  '] }),
+      ctx,
+    );
+    expect(both.totalCount).toBe(1);
+    expect(both.workflows[0]!.name).toBe('git-wrap-up');
+  });
+
+  it('keeps a whitespace-only tag as an AND term that matches nothing (GH #15)', async () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const mixed = await workflowList.handler(
+      workflowList.input.parse({ tags: ['git', '   '] }),
+      ctx,
+    );
+    expect(mixed.totalCount).toBe(0);
+
+    const blankOnly = await workflowList.handler(workflowList.input.parse({ tags: [' '] }), ctx);
+    expect(blankOnly.totalCount).toBe(0);
+  });
+
+  it('echoes the trimmed filter values in the empty-result notice (GH #15)', async () => {
+    const ctx = createMockContext({ errors: workflowList.errors });
+    const result = await workflowList.handler(
+      workflowList.input.parse({
+        query: '  zzz-nomatch  ',
+        category: '  Nowhere ',
+        tags: ['  nonexistent-tag  '],
+      }),
+      ctx,
+    );
+    expect(result.totalCount).toBe(0);
+
+    const { notice } = getEnrichment(ctx) as { notice?: string };
+    expect(notice).toContain('query "zzz-nomatch"');
+    expect(notice).toContain('category "Nowhere"');
+    expect(notice).toContain('"nonexistent-tag"');
+    expect(notice).not.toContain(' nonexistent-tag ');
+  });
+
+  // --- version ordering (GH #28) ---
+
+  it('sorts by name, then plain x.y.z versions numerically descending, on both surfaces', async () => {
+    await writeWorkflow(dir, 'probe', 'sort-probe', '1.2.0', 'Probe', undefined, 'a');
+    await writeWorkflow(dir, 'probe', 'sort-probe', '10.0.0', 'Probe', undefined, 'b');
+    await writeWorkflow(dir, 'probe', 'sort-probe', '2.0.0', 'Probe', undefined, 'c');
+    await reindex(svc);
+
+    const result = await runToolContract(workflowList, {});
+    const structured = result.structuredContent as {
+      workflows: { name: string; version: string }[];
+    };
+    const expected = [
+      'git-branch v1.0.0',
+      'git-wrap-up v1.0.0',
+      'search-pubmed v1.0.0',
+      'sort-probe v10.0.0',
+      'sort-probe v2.0.0',
+      'sort-probe v1.2.0',
+    ];
+    expect(structured.workflows.map((w) => `${w.name} v${w.version}`)).toEqual(expected);
+    expect(renderedHeadings((result.content[0] as { text: string }).text)).toEqual(expected);
+  });
+
+  it('orders a release before its prereleases, and prereleases by precedence (GH #28)', async () => {
+    await writeWorkflow(dir, 'probe', 'prerelease-probe', '1.0.0-alpha', 'Probe', undefined, 'a');
+    await writeWorkflow(dir, 'probe', 'prerelease-probe', '1.0.0-alpha.1', 'Probe', undefined, 'b');
+    await writeWorkflow(dir, 'probe', 'prerelease-probe', '1.0.0-beta', 'Probe', undefined, 'c');
+    await writeWorkflow(dir, 'probe', 'prerelease-probe', '1.0.0', 'Probe', undefined, 'd');
+    await writeWorkflow(dir, 'probe', 'prerelease-probe', '0.9.0', 'Probe', undefined, 'e');
+    await reindex(svc);
+
+    /**
+     * The index iterates in readdir order, which differs between filesystems. Re-insert the probe
+     * entries in fixed orders — ascending precedence (the exact reverse of the expected result) and
+     * an interleaving — so the result matches only when the tool itself sorts.
+     */
+    for (const insertion of [
+      ['0.9.0', '1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-beta', '1.0.0'],
+      ['1.0.0-alpha.1', '0.9.0', '1.0.0', '1.0.0-alpha', '1.0.0-beta'],
+    ]) {
+      const keys = insertion.map((v) => `prerelease-probe@${v}`);
+      for (const key of keys) {
+        const entry = svc.index.get(key);
+        if (!entry) throw new Error(`fixture ${key} is not indexed`);
+        svc.index.delete(key);
+        svc.index.set(key, entry);
+      }
+      expect([...svc.index.keys()].filter((k) => k.startsWith('prerelease-probe@'))).toEqual(keys);
+
+      const result = await runToolContract(workflowList, { query: 'prerelease-probe' });
+      const structured = result.structuredContent as { workflows: { version: string }[] };
+      const expected = ['1.0.0', '1.0.0-beta', '1.0.0-alpha.1', '1.0.0-alpha', '0.9.0'];
+      expect(structured.workflows.map((w) => w.version)).toEqual(expected);
+      expect(renderedHeadings((result.content[0] as { text: string }).text)).toEqual(
+        expected.map((v) => `prerelease-probe v${v}`),
+      );
+    }
   });
 });

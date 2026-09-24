@@ -5,8 +5,12 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import * as semver from 'semver';
 import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
-import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
+import {
+  canonicalVersion,
+  getWorkflowIndexService,
+} from '@/services/workflow-index/workflow-index-service.js';
 
 const StepOutputSchema = z.object({
   server: z.string().describe('Target MCP server name.'),
@@ -53,12 +57,22 @@ export const workflowGet = tool('workflow_get', {
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 
   input: z.object({
-    name: z.string().min(1).describe('Exact workflow name to retrieve.'),
+    name: z
+      .string()
+      .min(1)
+      .refine((v) => v.trim().length > 0, { message: 'Name must not be blank or whitespace-only.' })
+      .describe(
+        'Exact workflow name to retrieve. Leading and trailing whitespace is ignored; a blank name is rejected.',
+      ),
     version: z
       .string()
+      // An empty string reads as omitted, for form-based clients that send "" for an unset field.
+      .refine((v) => v === '' || semver.valid(v) !== null, {
+        message: 'Version must be a valid semantic version (e.g. "1.0.0").',
+      })
       .optional()
       .describe(
-        'Specific semver version to retrieve (e.g. "1.0.0"). Omit to get the highest available version.',
+        'Specific semver version to retrieve (e.g. "1.0.0"). Must be valid semver; surrounding whitespace, a leading "v", and build metadata are ignored, so "v1.0.0" retrieves 1.0.0. Omit to get the highest available version.',
       ),
   }),
 
@@ -80,13 +94,15 @@ export const workflowGet = tool('workflow_get', {
       reason: 'not_found',
       code: JsonRpcErrorCode.NotFound,
       when: 'No workflow matches the given name.',
-      recovery: 'Use workflow_list to discover available workflow names and verify spelling.',
+      recovery:
+        'Use workflow_list to see permanent workflow names (temporary drafts are not listed; use the key workflow_create_temp returned), then check the spelling and retry.',
     },
     {
       reason: 'version_not_found',
       code: JsonRpcErrorCode.NotFound,
       when: 'Name exists but the specific version does not.',
-      recovery: 'Omit version to get the latest, or use workflow_list to see available versions.',
+      recovery:
+        'Omit version to get the latest, or use workflow_list to see permanent versions (temporary drafts are not listed; use the key workflow_create_temp returned).',
     },
     {
       reason: 'index_unavailable',
@@ -104,23 +120,25 @@ export const workflowGet = tool('workflow_get', {
       });
     }
 
-    const entry = svc.findWorkflow(input.name, input.version);
+    const name = input.name.trim();
+    const version = input.version ? canonicalVersion(input.version) : undefined;
+    const entry = svc.findWorkflow(name, version);
 
     if (!entry) {
       // Distinguish "name exists, version doesn't" from "name doesn't exist"
-      const nameMatches = svc.findByName(input.name);
-      if (input.version && nameMatches.length > 0) {
+      const nameMatches = svc.findByName(name);
+      if (version && nameMatches.length > 0) {
         const available = nameMatches
           .map((e) => e.workflow.version)
-          .sort()
+          .sort(semver.compare)
           .join(', ');
         throw ctx.fail(
           'version_not_found',
-          `Workflow "${input.name}" does not have version "${input.version}". Available: ${available}`,
+          `Workflow "${name}" does not have version "${version}". Available: ${available}`,
           { ...ctx.recoveryFor('version_not_found') },
         );
       }
-      throw ctx.fail('not_found', `No workflow named "${input.name}" found`, {
+      throw ctx.fail('not_found', `No workflow named "${name}" found`, {
         ...ctx.recoveryFor('not_found'),
       });
     }

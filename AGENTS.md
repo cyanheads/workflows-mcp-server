@@ -127,13 +127,13 @@ Two more `createApp()` options shape how the server runs rather than how it pres
 
 ```ts
 await createApp({
-  sessionMode: 'stateless',          // or { default: 'stateful', require: 'stateful' }
+  sessionMode: { default: 'stateful', require: 'stateful' },
   setup(core) { initWorkflowIndexService(/* … */); },
   teardown() { shutdownWorkflowIndexService(); },
 });
 ```
 
-`sessionMode` declares the HTTP session posture in `src/` instead of leaving it to a deployment's `MCP_SESSION_MODE`, which still wins whenever it carries a meaningful value (an empty string and an unsubstituted `${…}` placeholder read as unset and fall through to the option). This server declares `stateless` — no tool gates on `ctx.requestInput`, so the session-backed 2025-era elicitation shim has nothing to serve. Add `require: 'stateful'` on a server whose tools do ask the caller for input mid-handler: startup then fails with a `ConfigurationError` rather than serving a mode in which a 2025-era client can never answer. Stdio is never refused.
+`sessionMode` declares the HTTP session posture in `src/` instead of leaving it to a deployment's `MCP_SESSION_MODE`, which still wins whenever it carries a meaningful value (an empty string and an unsubstituted `${…}` placeholder read as unset and fall through to the option). This server declares `stateful` with `require: 'stateful'` because `workflow_delete` gates its unlink on a `ctx.requestInput` confirmation, and a 2025-era HTTP client can only answer that round over a live session. HTTP startup with `MCP_SESSION_MODE=stateless` therefore fails with a `ConfigurationError` rather than serving a mode in which such a client could never delete; the `Dockerfile` and `.env.example` set `stateful` to match. Stdio is never refused.
 
 `teardown(core)` is the `setup()` counterpart — release a watcher, socket, or non-`unref()`'d timer there. It runs after the transport stops and before the logger closes, on every shutdown path, and a signal-triggered shutdown then exits the process explicitly (0, or 1 if a step never settles within the framework's 10 s ceiling). `WorkflowIndexService` allocates both an `fs.watch` `AbortController` and a debounce `setTimeout`, so `shutdownWorkflowIndexService()` is what the hook calls.
 
@@ -216,8 +216,8 @@ src/
       workflow-list.tool.ts             # workflow_list — list permanent workflows with filters
       workflow-get.tool.ts              # workflow_get — retrieve full workflow + global instructions
       workflow-create.tool.ts           # workflow_create — write permanent workflow YAML
-      workflow-create-temp.tool.ts      # workflow_create_temp — write temporary workflow
-      workflow-delete.tool.ts           # workflow_delete — remove permanent workflow
+      workflow-create-temp.tool.ts      # workflow_create_temp — write temporary draft (kept until deleted)
+      workflow-delete.tool.ts           # workflow_delete — confirm with the user, then remove a permanent workflow or draft
       index.ts                          # Barrel export
 workflows-yaml/                         # Workflow library root (configurable via WORKFLOWS_DIR)
   categories/                           # Permanent workflows organized by category

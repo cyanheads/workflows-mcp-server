@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/workflow-index/workflow-index-service.js', async (importOriginal) => {
@@ -90,7 +90,7 @@ describe('workflowGet', () => {
   afterEach(async () => {
     svc.shutdown();
     vi.restoreAllMocks();
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
 
   // --- happy paths ---
@@ -201,6 +201,152 @@ describe('workflowGet', () => {
     const text = (blocks[0] as { text: string }).text;
     expect(text).toContain('No global execution guidance');
   });
+
+  // --- version input (GH #16, #26) ---
+
+  it('treats an empty-string version as omitted and returns the latest', async () => {
+    const ctx = createMockContext({ errors: workflowGet.errors });
+    const input = workflowGet.input.parse({ name: 'deploy-app', version: '' });
+    const result = await workflowGet.handler(input, ctx);
+    expect(result.workflow.version).toBe('2.0.0');
+  });
+
+  it.each(['not-semver', '1.0', '1.0.0junk', '   '])(
+    'rejects non-semver version %j as invalid arguments before lookup (GH #16)',
+    async (version) => {
+      const findWorkflow = vi.spyOn(svc, 'findWorkflow');
+      const result = await runToolContract(workflowGet, { name: 'deploy-app', version });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        error: { code: JsonRpcErrorCode.InvalidParams, data: { reason: 'invalid_arguments' } },
+      });
+      expect((result.content[0] as { text: string }).text).toContain('version');
+      expect(findWorkflow).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['v1.0.0', '1.0.0'],
+    [' 2.0.0 ', '2.0.0'],
+    ['1.0.0+build.5', '1.0.0'],
+  ])(
+    'canonicalizes the tolerated spelling %j before lookup (GH #16)',
+    async (version, canonical) => {
+      const result = await runToolContract(workflowGet, { name: 'deploy-app', version });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({ workflow: { version: canonical } });
+      expect((result.content[0] as { text: string }).text).toContain(`# deploy-app v${canonical}`);
+    },
+  );
+
+  it('serves an on-disk non-canonical version under its canonical form (GH #26)', async () => {
+    await fs.writeFile(
+      path.join(dir, 'categories', 'deployment', 'deploy-app-v3.yaml'),
+      PERMANENT_WF_YAML.replace('version: "1.0.0"', 'version: "v3.0.0"'),
+      'utf-8',
+    );
+    await svc.init();
+
+    const ctx = createMockContext({ errors: workflowGet.errors });
+    const latest = await workflowGet.handler(workflowGet.input.parse({ name: 'deploy-app' }), ctx);
+    expect(latest.workflow.version).toBe('3.0.0');
+
+    for (const version of ['3.0.0', 'v3.0.0']) {
+      const exact = await workflowGet.handler(
+        workflowGet.input.parse({ name: 'deploy-app', version }),
+        ctx,
+      );
+      expect(exact.workflow.version).toBe('3.0.0');
+    }
+  });
+
+  it('reports version_not_found with the canonical version and semver-ordered alternatives', async () => {
+    await fs.writeFile(
+      path.join(dir, 'categories', 'deployment', 'deploy-app-v10.yaml'),
+      PERMANENT_WF_YAML.replace('version: "1.0.0"', 'version: "10.0.0"'),
+      'utf-8',
+    );
+    await svc.init();
+
+    const ctx = createMockContext({ errors: workflowGet.errors });
+    const input = workflowGet.input.parse({ name: 'deploy-app', version: 'v99.0.0' });
+    await expect(workflowGet.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.NotFound,
+      data: { reason: 'version_not_found' },
+      message:
+        'Workflow "deploy-app" does not have version "99.0.0". Available: 1.0.0, 2.0.0, 10.0.0',
+    });
+  });
+
+  // --- name input (GH #33) ---
+
+  it('trims a padded name before lookup and serves the stored workflow on both surfaces (GH #33)', async () => {
+    const result = await runToolContract(workflowGet, { name: '  deploy-app  ' });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      workflow: { name: 'deploy-app', version: '2.0.0' },
+      source: 'permanent',
+    });
+    expect((result.content[0] as { text: string }).text).toContain('# deploy-app v2.0.0');
+  });
+
+  it('trims a padded name on an exact-version lookup and a draft lookup (GH #33)', async () => {
+    const exact = await runToolContract(workflowGet, { name: '\tdeploy-app\n', version: '1.0.0' });
+    const draft = await runToolContract(workflowGet, { name: ' quick-plan ' });
+
+    expect(exact.structuredContent).toMatchObject({ workflow: { version: '1.0.0' } });
+    expect(draft.structuredContent).toMatchObject({
+      workflow: { name: 'quick-plan' },
+      source: 'temp',
+    });
+  });
+
+  it('names the trimmed name in version_not_found (GH #33)', async () => {
+    const ctx = createMockContext({ errors: workflowGet.errors });
+    const input = workflowGet.input.parse({ name: ' deploy-app ', version: '99.0.0' });
+    await expect(workflowGet.handler(input, ctx)).rejects.toMatchObject({
+      data: { reason: 'version_not_found' },
+      message: 'Workflow "deploy-app" does not have version "99.0.0". Available: 1.0.0, 2.0.0',
+    });
+  });
+
+  it.each(['', '   '])(
+    'rejects the blank name %j as invalid arguments before lookup (GH #33)',
+    async (name) => {
+      const findWorkflow = vi.spyOn(svc, 'findWorkflow');
+      const result = await runToolContract(workflowGet, { name });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        error: { code: JsonRpcErrorCode.InvalidParams, data: { reason: 'invalid_arguments' } },
+      });
+      expect((result.content[0] as { text: string }).text).toContain('name');
+      expect(findWorkflow).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['not_found', { name: 'nonexistent-wf' }],
+    ['version_not_found', { name: 'deploy-app', version: '99.0.0' }],
+  ])(
+    'points %s recovery at the draft key, since workflow_list never shows drafts',
+    async (reason, input) => {
+      const result = await runToolContract(workflowGet, input);
+
+      expect(result.isError).toBe(true);
+      const { error } = result.structuredContent as {
+        error: { data: { reason: string; recovery?: { hint: string } } };
+      };
+      expect(error.data.reason).toBe(reason);
+      expect(error.data.recovery?.hint).toContain('workflow_list');
+      expect(error.data.recovery?.hint).toContain('temporary drafts are not listed');
+      expect(error.data.recovery?.hint).toContain('workflow_create_temp');
+      expect((result.content[0] as { text: string }).text).toContain('workflow_create_temp');
+    },
+  );
 
   it('renders **Temporary:** yes when temporary flag is present', () => {
     const blocks = workflowGet.format!({

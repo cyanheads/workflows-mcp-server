@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import * as semver from 'semver';
 import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
 
 export const workflowList = tool('workflow_list', {
@@ -21,19 +22,19 @@ export const workflowList = tool('workflow_list', {
       .string()
       .optional()
       .describe(
-        'Keyword filter matched case-insensitively against each workflow name and description. A workflow matches if either field contains the query. Omit to skip keyword filtering.',
+        'Keyword filter matched case-insensitively against each workflow name and description. A workflow matches if either field contains the query. Leading and trailing whitespace is ignored. Omit to skip keyword filtering.',
       ),
     category: z
       .string()
       .optional()
       .describe(
-        'Filter to workflows whose category contains this string (case-insensitive substring match). Omit to return all categories.',
+        'Filter to workflows whose category contains this string (case-insensitive substring match). Leading and trailing whitespace is ignored. Omit to return all categories.',
       ),
     tags: z
       .array(z.string())
       .optional()
       .describe(
-        'Filter to workflows that have ALL of these tags (AND match). Omit to skip tag filtering.',
+        'Filter to workflows that have ALL of these tags (AND match, case-insensitive, each tag trimmed of leading and trailing whitespace). Omit to skip tag filtering.',
       ),
     includeTools: z
       .boolean()
@@ -63,7 +64,9 @@ export const workflowList = tool('workflow_list', {
           })
           .describe('Summary of a single workflow entry.'),
       )
-      .describe('Matching workflows, sorted by name then version descending.'),
+      .describe(
+        'Matching workflows, sorted by name, then by semver precedence descending (a release before its prereleases).',
+      ),
     totalCount: z.number().describe('Total number of matching workflows.'),
   }),
 
@@ -93,7 +96,12 @@ export const workflowList = tool('workflow_list', {
       });
     }
 
-    const { query, category, tags, includeTools } = input;
+    const { includeTools } = input;
+    // Trim once so matching and the empty-result echo use the same values. A blank query or
+    // category means "no filter"; a blank tag stays in the AND set and matches nothing.
+    const query = input.query?.trim() || undefined;
+    const category = input.category?.trim() || undefined;
+    const tags = input.tags?.map((t) => t.trim());
     const results: {
       name: string;
       version: string;
@@ -111,7 +119,7 @@ export const workflowList = tool('workflow_list', {
       const wf = entry.workflow;
 
       // Keyword filter (case-insensitive substring across name OR description)
-      if (query?.trim()) {
+      if (query) {
         const q = query.toLowerCase();
         if (!wf.name.toLowerCase().includes(q) && !wf.description.toLowerCase().includes(q)) {
           continue;
@@ -119,7 +127,7 @@ export const workflowList = tool('workflow_list', {
       }
 
       // Category filter (case-insensitive substring)
-      if (category?.trim()) {
+      if (category) {
         if (!wf.category?.toLowerCase().includes(category.toLowerCase())) continue;
       }
 
@@ -150,27 +158,15 @@ export const workflowList = tool('workflow_list', {
       results.push(item);
     }
 
-    // Sort by name then version descending
-    results.sort((a, b) => {
-      const nameCmp = a.name.localeCompare(b.name);
-      if (nameCmp !== 0) return nameCmp;
-      // semver descending (higher version first)
-      const av = a.version.match(/^(\d+)\.(\d+)\.(\d+)/);
-      const bv = b.version.match(/^(\d+)\.(\d+)\.(\d+)/);
-      if (av && bv) {
-        for (let i = 1; i <= 3; i++) {
-          const diff = Number(bv[i]) - Number(av[i]);
-          if (diff !== 0) return diff;
-        }
-      }
-      return 0;
-    });
+    // Sort by name, then by semver precedence descending — the same order findWorkflow() uses to
+    // pick the latest. Every indexed version is valid semver, so rcompare cannot throw.
+    results.sort((a, b) => a.name.localeCompare(b.name) || semver.rcompare(a.version, b.version));
 
     if (results.length === 0) {
       const applied: string[] = [];
-      if (query?.trim()) applied.push(`query "${query.trim()}"`);
-      if (category?.trim()) applied.push(`category "${category.trim()}"`);
-      if (tags && tags.length > 0) applied.push(`tags [${tags.join(', ')}]`);
+      if (query) applied.push(`query "${query}"`);
+      if (category) applied.push(`category "${category}"`);
+      if (tags && tags.length > 0) applied.push(`tags [${tags.map((t) => `"${t}"`).join(', ')}]`);
       ctx.enrich.notice(
         applied.length > 0
           ? `No permanent workflows matched ${applied.join(', ')}. Remove or broaden a filter, or call again with no filters to list the full library.`

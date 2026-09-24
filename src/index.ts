@@ -22,14 +22,17 @@ await createApp({
   instructions:
     'A declarative workflow library. Use workflow_list to discover available workflows, ' +
     'workflow_get to retrieve a full workflow definition with global instructions, ' +
-    'workflow_create to persist a new workflow, and workflow_create_temp to store a temporary one-shot plan.',
+    'workflow_create to persist a new workflow, workflow_create_temp to store a temporary draft ' +
+    '(kept until deleted), and workflow_delete to remove a permanent workflow or a draft once the ' +
+    'user confirms the prompt it shows.',
 
   /**
-   * No tool gates on ctx.requestInput, so there is nothing a session-backed 2025-era
-   * elicitation round trip would serve. Declared here so a source run resolves the same
-   * posture the Dockerfile and .env.example already set; MCP_SESSION_MODE still overrides.
+   * workflow_delete gates its unlink on a ctx.requestInput confirmation. A 2025-era HTTP client
+   * answers that round only over a live session — under stateless serving the elicitation is
+   * refused and no such client could ever delete. `require` makes HTTP startup with
+   * MCP_SESSION_MODE=stateless fail with a ConfigurationError instead. Stdio is unaffected.
    */
-  sessionMode: 'stateless',
+  sessionMode: { default: 'stateful', require: 'stateful' },
 
   setup(core) {
     const cfg = getServerConfig();

@@ -7,12 +7,23 @@ import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import * as semver from 'semver';
 import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
-import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
+import {
+  canonicalVersion,
+  findWorkflowIssues,
+  getWorkflowIndexService,
+  withoutFsPath,
+} from '@/services/workflow-index/workflow-index-service.js';
 
 const StepInputSchema = z
   .object({
-    server: z.string().min(1).describe('Target MCP server name.'),
-    tool: z.string().min(1).describe('Target tool on the server.'),
+    server: z
+      .string()
+      .min(1)
+      .describe('Target MCP server name. Must not be blank or whitespace-only.'),
+    tool: z
+      .string()
+      .min(1)
+      .describe('Target tool on the server. Must not be blank or whitespace-only.'),
     action: z.string().optional().describe('Sub-action or variant label.'),
     description: z.string().optional().describe('Why this step exists.'),
     name: z.string().optional().describe('Optional step name.'),
@@ -33,7 +44,7 @@ export const workflowCreate = tool('workflow_create', {
   title: 'Create Workflow',
   description:
     'Create and durably store a new permanent workflow. ' +
-    'Rejects the write when the same name and version already exist — bump the version to store a revision alongside the existing one. ' +
+    'Rejects the write when the same name and version already exist, as a permanent workflow or a temporary draft — bump the version to store a revision alongside the existing one. ' +
     'Created and last-updated dates are stamped automatically. ' +
     'Template placeholders like {{input.foo}} in step params are stored verbatim, not resolved. ' +
     'New workflows appear in workflow_list and are retrievable with workflow_get.',
@@ -43,15 +54,27 @@ export const workflowCreate = tool('workflow_create', {
     name: z
       .string()
       .min(1)
-      .describe('Workflow name (human-readable, e.g. "Standard Git Wrap-up").'),
+      .describe(
+        'Workflow name (human-readable, e.g. "Standard Git Wrap-up"). Must not be blank or whitespace-only.',
+      ),
     version: z
       .string()
       .refine((v) => semver.valid(v) !== null, {
         message: 'Version must be a valid semantic version (e.g. "1.0.0").',
       })
-      .describe('Semver version string (e.g. "1.0.0"). Must be valid semver.'),
-    description: z.string().min(1).describe('One-line description of what the workflow does.'),
-    author: z.string().min(1).describe('Author name or team.'),
+      .describe(
+        'Semver version string (e.g. "1.0.0"). Must be valid semver. Stored in canonical form: surrounding whitespace, a leading "v", and build metadata are dropped, so "v1.0.0+build.5" is stored as "1.0.0".',
+      ),
+    description: z
+      .string()
+      .min(1)
+      .describe(
+        'One-line description of what the workflow does. Must not be blank or whitespace-only.',
+      ),
+    author: z
+      .string()
+      .min(1)
+      .describe('Author name or team. Must not be blank or whitespace-only.'),
     category: z
       .string()
       .min(1)
@@ -68,7 +91,9 @@ export const workflowCreate = tool('workflow_create', {
   output: z.object({
     status: z.literal('created').describe('Confirms the workflow was written to disk and indexed.'),
     filePath: z.string().describe('Absolute path where the workflow was written.'),
-    key: z.string().describe('Index key for this workflow: name@version.'),
+    key: z
+      .string()
+      .describe('Index key for this workflow: name@version, with the version in canonical form.'),
     created_date: z.string().describe('Date the workflow was created (YYYY-MM-DD).'),
     last_updated_date: z.string().describe('Date the workflow was last updated (YYYY-MM-DD).'),
   }),
@@ -77,15 +102,16 @@ export const workflowCreate = tool('workflow_create', {
     {
       reason: 'invalid_input',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'A field passed schema validation but is semantically invalid: a blank/whitespace-only category, a category that slugifies to empty, or a name that slugifies to empty or exceeds the filename length limit.',
+      when: 'A field passed schema validation but is semantically invalid: a whitespace-only name, description, author, category, or step server/tool; a category that slugifies to empty; or a name or category that exceeds its filename length limit after slugification.',
       recovery:
-        'Provide a category and workflow name that each contain alphanumeric characters, and keep the name under 200 characters after slugification.',
+        'Give every required text field visible content, use a category that contains alphanumeric characters, and keep the name to at most 200 characters and the category to at most 255 characters after slugification.',
     },
     {
       reason: 'already_exists',
       code: JsonRpcErrorCode.Conflict,
-      when: 'A permanent workflow with this name@version already exists in the index.',
-      recovery: 'Change the version field or use a different name to avoid the conflict.',
+      when: 'This name@version is already indexed, as a permanent workflow or as a temporary draft from workflow_create_temp.',
+      recovery:
+        'Change the version field or use a different name; if a temporary draft holds this name and version, delete the draft with workflow_delete and retry.',
     },
     {
       reason: 'write_failed',
@@ -99,17 +125,10 @@ export const workflowCreate = tool('workflow_create', {
   async handler(input, ctx) {
     const svc = getWorkflowIndexService();
 
-    // Reject whitespace-only category at the tool boundary (Zod min(1) passes "   ").
-    if (input.category.trim().length === 0) {
-      throw ctx.fail('invalid_input', 'Category must not be blank or whitespace-only.', {
-        ...ctx.recoveryFor('invalid_input'),
-      });
-    }
-
     const today = new Date().toISOString().slice(0, 10);
     const workflow: ParsedWorkflow = {
       name: input.name.trim(),
-      version: input.version.trim(),
+      version: canonicalVersion(input.version),
       description: input.description,
       author: input.author,
       category: input.category.trim(),
@@ -127,17 +146,22 @@ export const workflowCreate = tool('workflow_create', {
       })),
     };
 
+    // Apply the index's own schema before writing: Zod min(1) passes "   ", and a file the
+    // index would skip at rebuild must never be written in the first place.
+    const issues = findWorkflowIssues(workflow);
+    if (issues) {
+      throw ctx.fail('invalid_input', `Invalid workflow — ${issues}`, {
+        ...ctx.recoveryFor('invalid_input'),
+      });
+    }
+
     let filePath: string;
     try {
       filePath = await svc.writePermanent(workflow);
     } catch (err: unknown) {
       const reason = (err as { _reason?: string })._reason;
       if (err instanceof Error && reason === 'already_exists') {
-        throw ctx.fail(
-          'already_exists',
-          `Workflow "${workflow.name}@${workflow.version}" already exists`,
-          { ...ctx.recoveryFor('already_exists') },
-        );
+        throw ctx.fail('already_exists', err.message, { ...ctx.recoveryFor('already_exists') });
       }
       if (
         err instanceof Error &&
@@ -152,10 +176,7 @@ export const workflowCreate = tool('workflow_create', {
         err instanceof Error ? err : new Error(String(err)),
       );
       // Strip filesystem paths from the user-visible message.
-      const safeMsg =
-        err instanceof Error
-          ? err.message.replace(/\s*open '.*?'/g, '').trim()
-          : 'Unknown write error';
+      const safeMsg = err instanceof Error ? withoutFsPath(err.message) : 'Unknown write error';
       throw ctx.fail('write_failed', `Failed to write workflow: ${safeMsg}`, {
         ...ctx.recoveryFor('write_failed'),
       });

@@ -196,5 +196,5 @@ announcements/
 # =============================================================================
 # Auto-generated index snapshot — rebuilt at runtime on every index rebuild
 workflows-yaml/_index.json
-# Temporary workflows — ephemeral, created at runtime by workflow_create_temp
+# Temporary workflow drafts — written at runtime by workflow_create_temp, kept until workflow_delete removes them
 workflows-yaml/temp/*

@@ -3,20 +3,25 @@
  * @module tests/services/workflow-index-service.test
  */
 
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppConfig } from '@cyanheads/mcp-ts-core/config';
 import type { StorageService } from '@cyanheads/mcp-ts-core/storage';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { logger } from '@cyanheads/mcp-ts-core/utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
 import {
+  type ConfirmedTarget,
   getWorkflowIndexService,
   initWorkflowIndexService,
   shutdownWorkflowIndexService,
   slugify,
   WorkflowIndexService,
+  withoutFsPath,
 } from '@/services/workflow-index/workflow-index-service.js';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +80,48 @@ async function mkTmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'workflows-test-'));
 }
 
+/**
+ * The filename the write path gives a stored key: the readable slugs plus the first 8 hex
+ * characters of SHA-256 over `name@version`. `nameSlug` overrides the name part for names that
+ * slugify to nothing.
+ */
+function fileNameFor(name: string, version: string, nameSlug = slugify(name)): string {
+  const hash = createHash('sha256').update(`${name}@${version}`).digest('hex').slice(0, 8);
+  return `${nameSlug}-${slugify(version)}-${hash}-workflow.yaml`;
+}
+
+/** A valid permanent workflow for write-path tests. */
+function permanentWorkflow(overrides: Partial<ParsedWorkflow> = {}): ParsedWorkflow {
+  return {
+    name: 'fixture-wf',
+    version: '1.0.0',
+    description: 'fixture',
+    author: 'me',
+    category: 'testing',
+    steps: [{ server: 'srv', tool: 'tool' }],
+    ...overrides,
+  };
+}
+
+/** A valid temporary workflow (no category) for write-path tests. */
+function tempWorkflow(overrides: Partial<ParsedWorkflow> = {}): ParsedWorkflow {
+  return {
+    name: 'fixture-wf',
+    version: '1.0.0',
+    description: 'fixture',
+    author: 'agent',
+    temporary: true,
+    steps: [{ server: 'srv', tool: 'tool' }],
+    ...overrides,
+  };
+}
+
+/** Workflow files anywhere under a directory, relative to it; empty when it does not exist. */
+async function yamlFilesUnder(root: string): Promise<string[]> {
+  const entries = await fs.readdir(root, { recursive: true }).catch(() => [] as string[]);
+  return entries.filter((f) => /\.ya?ml$/.test(f)).sort();
+}
+
 /** Poll a sync/async predicate until it returns true or the timeout elapses. */
 async function waitFor(
   predicate: () => boolean | Promise<boolean>,
@@ -129,6 +176,43 @@ describe('slugify', () => {
 });
 
 // ---------------------------------------------------------------------------
+// withoutFsPath (GH #31)
+// ---------------------------------------------------------------------------
+
+describe('withoutFsPath', () => {
+  it.each([
+    [
+      "ENAMETOOLONG: name too long, mkdir '/abs/workflows/categories/ccc'",
+      'ENAMETOOLONG: name too long',
+    ],
+    ["EACCES: permission denied, open '/abs/workflows/temp/x.yaml'", 'EACCES: permission denied'],
+    [
+      "ENOENT: no such file or directory, unlink '/abs/Casey's vault/x.yaml'",
+      'ENOENT: no such file or directory',
+    ],
+    [
+      "ENOENT: no such file or directory, rename '/abs/a' -> '/abs/b'",
+      'ENOENT: no such file or directory',
+    ],
+    ['ENOSPC: no space left on device, write', 'ENOSPC: no space left on device, write'],
+    ['Something else went wrong', 'Something else went wrong'],
+  ])('reduces %j to %j', (message, expected) => {
+    expect(withoutFsPath(message)).toBe(expected);
+  });
+
+  it('strips the path from a real error raised by the filesystem', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "quote's-"));
+    try {
+      const err = await fs.mkdir(path.join(root, 'c'.repeat(300))).catch((e: unknown) => e);
+      expect((err as Error).message).toContain(root);
+      expect(withoutFsPath((err as Error).message)).toBe('ENAMETOOLONG: name too long');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // WorkflowIndexService — index build
 // ---------------------------------------------------------------------------
 
@@ -143,8 +227,21 @@ describe('WorkflowIndexService', () => {
 
   afterEach(async () => {
     svc.shutdown();
-    await fs.rm(dir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
+
+  /** Issue and redeem a delete confirmation for whatever the name (and version) resolves to now. */
+  const confirm = async (name: string, version?: string): Promise<ConfirmedTarget> => {
+    const { id } = await svc.requestDeleteConfirmation(name, version);
+    const confirmed = svc.takeDeleteConfirmation(id);
+    if (!confirmed) throw new Error(`confirmation ${id} was not redeemable`);
+    return confirmed;
+  };
+
+  /** Delete whatever the name (and version) resolves to right now, confirming that target. */
+  const deleteResolved = async (name: string, version?: string) =>
+    svc.deleteWorkflow(name, version, await confirm(name, version));
 
   // --- init / build ---
 
@@ -232,6 +329,126 @@ describe('WorkflowIndexService', () => {
     const entry = svc.findWorkflow('Semver Edge');
     expect(entry?.workflow.version).toBe('1.0.0');
   });
+
+  // --- duplicate keys ---
+
+  it('collapses two files with the same name@version to one entry and warns', async () => {
+    const warn = vi.spyOn(logger, 'warning');
+    const catDir = path.join(dir, 'categories', 'testing');
+    await fs.mkdir(catDir, { recursive: true });
+    const first = path.join(catDir, 'a.yaml');
+    const second = path.join(catDir, 'b.yaml');
+    await fs.writeFile(first, makeWorkflowYaml({ name: 'Dup Key' }), 'utf-8');
+    await fs.writeFile(second, makeWorkflowYaml({ name: 'Dup Key' }), 'utf-8');
+
+    await svc.init();
+
+    expect(svc.findByName('Dup Key')).toHaveLength(1);
+    expect([first, second]).toContain(svc.index.get('Dup Key@1.0.0')?.filePath);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Duplicate workflow key "Dup Key@1.0.0"'),
+    );
+  });
+
+  // --- version canonicalization (GH #16, #26) ---
+
+  it('indexes a hand-authored non-canonical version under its canonical key (GH #26)', async () => {
+    const catDir = path.join(dir, 'categories', 'testing');
+    await fs.mkdir(catDir, { recursive: true });
+    await fs.writeFile(
+      path.join(catDir, 'v-prefixed.yaml'),
+      makeWorkflowYaml({ name: 'Spelled', version: 'v1.0.0' }),
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(catDir, 'build-meta.yaml'),
+      makeWorkflowYaml({ name: 'Spelled', version: '2.0.0+build.5' }),
+      'utf-8',
+    );
+
+    await svc.init();
+
+    expect([...svc.index.keys()].sort()).toEqual(['Spelled@1.0.0', 'Spelled@2.0.0']);
+    expect(svc.index.get('Spelled@1.0.0')?.workflow.version).toBe('1.0.0');
+    expect(svc.index.get('Spelled@2.0.0')?.workflow.version).toBe('2.0.0');
+    expect(svc.findWorkflow('Spelled')?.workflow.version).toBe('2.0.0');
+  });
+
+  it('collapses on-disk spellings of one canonical version to one entry with a warning (GH #26)', async () => {
+    const warn = vi.spyOn(logger, 'warning');
+    const catDir = path.join(dir, 'categories', 'testing');
+    await fs.mkdir(catDir, { recursive: true });
+    await fs.writeFile(
+      path.join(catDir, 'plain.yaml'),
+      makeWorkflowYaml({ name: 'Collide', version: '1.0.0' }),
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(catDir, 'prefixed.yaml'),
+      makeWorkflowYaml({ name: 'Collide', version: 'v1.0.0' }),
+      'utf-8',
+    );
+
+    await svc.init();
+
+    expect(svc.findByName('Collide')).toHaveLength(1);
+    expect(svc.index.has('Collide@1.0.0')).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Duplicate workflow key "Collide@1.0.0"'),
+    );
+  });
+
+  // --- blank required text (GH #22) ---
+
+  it.each([
+    ['name', { name: '   ' }],
+    ['category', { category: '   ' }],
+    ['description', { description: '   ' }],
+    ['author', { author: '\t ' }],
+    ['steps.0.server', { steps: [{ server: '   ', tool: 't' }] }],
+    [
+      'steps.1.tool',
+      {
+        steps: [
+          { server: 's', tool: 't' },
+          { server: 's', tool: '   ' },
+        ],
+      },
+    ],
+  ])(
+    'skips a hand-authored file whose %s is whitespace-only, with a warning (GH #22)',
+    async (field, override) => {
+      const warn = vi.spyOn(logger, 'warning');
+      const catDir = path.join(dir, 'categories', 'testing');
+      await fs.mkdir(catDir, { recursive: true });
+      const base = {
+        name: 'Blank Probe',
+        version: '1.0.0',
+        description: 'blank field probe',
+        author: 'me',
+        category: 'testing',
+        steps: [{ server: 's', tool: 't' }],
+        ...override,
+      };
+      // JSON is valid YAML, and keeps whitespace-only scalars quoted so they parse as strings.
+      const badPath = path.join(catDir, 'blank.yaml');
+      await fs.writeFile(badPath, JSON.stringify(base), 'utf-8');
+      await fs.writeFile(
+        path.join(catDir, 'good.yaml'),
+        makeWorkflowYaml({ name: 'Good Sibling' }),
+        'utf-8',
+      );
+
+      await svc.init();
+
+      expect(svc.index.size).toBe(1);
+      expect(svc.index.has('Good Sibling@1.0.0')).toBe(true);
+      const skipWarning = warn.mock.calls
+        .map(([message]) => String(message))
+        .find((message) => message.includes(`Invalid workflow schema at ${badPath}`));
+      expect(skipWarning).toContain(field);
+    },
+  );
 
   it('writes index snapshot to _index.json', async () => {
     const catDir = path.join(dir, 'categories', 'testing');
@@ -452,7 +669,7 @@ describe('WorkflowIndexService', () => {
     });
 
     expect(filePath).toContain('git-operations');
-    expect(filePath).toContain('new-workflow-1-0-0-workflow.yaml');
+    expect(filePath).toContain(fileNameFor('new-workflow', '1.0.0'));
     expect(svc.index.has('new-workflow@1.0.0')).toBe(true);
   });
 
@@ -505,7 +722,7 @@ describe('WorkflowIndexService', () => {
     });
     expect(svc.index.has('delete-me@1.0.0')).toBe(true);
 
-    const deleted = await svc.deleteWorkflow('delete-me', '1.0.0');
+    const deleted = await deleteResolved('delete-me', '1.0.0');
     expect(deleted).toEqual({ name: 'delete-me', version: '1.0.0' });
     expect(svc.index.has('delete-me@1.0.0')).toBe(false);
     await expect(fs.stat(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -523,7 +740,7 @@ describe('WorkflowIndexService', () => {
     await svc.writePermanent({ ...base, version: '1.0.0' });
     await svc.writePermanent({ ...base, version: '2.0.0' });
 
-    const deleted = await svc.deleteWorkflow('multi-del');
+    const deleted = await deleteResolved('multi-del');
     expect(deleted.version).toBe('2.0.0');
     expect(svc.index.has('multi-del@2.0.0')).toBe(false);
     expect(svc.index.has('multi-del@1.0.0')).toBe(true);
@@ -531,14 +748,14 @@ describe('WorkflowIndexService', () => {
 
   it('deleteWorkflow throws tagged not_found for an unknown name', async () => {
     await svc.init();
-    const err = await svc.deleteWorkflow('nope').catch((e: unknown) => e);
+    const err = await deleteResolved('nope').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as { _reason?: string })._reason).toBe('not_found');
   });
 
-  it('deleteWorkflow throws tagged temp_not_allowed for a temp workflow', async () => {
+  it('deleteWorkflow deletes a temp workflow and keeps temp/ (GH #18)', async () => {
     await svc.init();
-    await svc.writeTemp({
+    const draft = await svc.writeTemp({
       name: 'temp-del',
       version: '1.0.0',
       description: 'temp',
@@ -547,11 +764,368 @@ describe('WorkflowIndexService', () => {
       steps: [{ server: 'srv', tool: 'tool' }],
     });
 
-    const err = await svc.deleteWorkflow('temp-del').catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect((err as { _reason?: string })._reason).toBe('temp_not_allowed');
-    // Temp entry is untouched.
-    expect(svc.index.has('temp-del@1.0.0')).toBe(true);
+    const deleted = await deleteResolved('temp-del');
+    expect(deleted).toEqual({ name: 'temp-del', version: '1.0.0' });
+    // The draft is gone from the index and from disk; the emptied temp/ directory stays.
+    expect(svc.index.has('temp-del@1.0.0')).toBe(false);
+    await expect(fs.stat(draft.filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readdir(path.join(dir, 'temp'))).toEqual([]);
+  });
+
+  // --- delete targets (GH #17, #18) ---
+
+  it('resolveTarget names the entry by key, source, and path relative to the root (GH #17)', async () => {
+    await svc.init();
+    const permanent = await svc.writePermanent(permanentWorkflow({ name: 'Target Probe' }));
+    const draft = await svc.writeTemp(tempWorkflow({ name: 'Target Probe', version: '2.0.0' }));
+
+    expect(svc.resolveTarget('Target Probe', '1.0.0')).toEqual({
+      name: 'Target Probe',
+      version: '1.0.0',
+      source: 'permanent',
+      path: path.relative(dir, permanent),
+    });
+    // An omitted version resolves to the highest version across both sources.
+    expect(svc.resolveTarget('Target Probe')).toEqual({
+      name: 'Target Probe',
+      version: '2.0.0',
+      source: 'temp',
+      path: path.join('temp', path.basename(draft.filePath)),
+    });
+  });
+
+  it('resolveTarget throws tagged not_found for an unknown name or version (GH #17)', () => {
+    for (const lookup of [
+      () => svc.resolveTarget('nope'),
+      () => svc.resolveTarget('nope', '1.0.0'),
+    ]) {
+      let err: unknown;
+      try {
+        lookup();
+      } catch (e: unknown) {
+        err = e;
+      }
+      expect((err as { _reason?: string })._reason).toBe('not_found');
+    }
+  });
+
+  it('deletes the temp draft when it is the highest version across sources (GH #18)', async () => {
+    await svc.init();
+    const permanent = await svc.writePermanent(
+      permanentWorkflow({ name: 'Mixed', version: '1.0.0' }),
+    );
+    const draft = await svc.writeTemp(tempWorkflow({ name: 'Mixed', version: '2.0.0' }));
+
+    await expect(deleteResolved('Mixed')).resolves.toEqual({ name: 'Mixed', version: '2.0.0' });
+
+    await expect(fs.stat(draft.filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.stat(permanent)).isFile()).toBe(true);
+    expect(svc.resolveTarget('Mixed')).toMatchObject({ version: '1.0.0', source: 'permanent' });
+  });
+
+  it('keeps a temp draft across a restart on the same directory (GH #18)', async () => {
+    await svc.init();
+    const draft = await svc.writeTemp(tempWorkflow({ name: 'Survivor' }));
+    svc.shutdown();
+
+    svc = new WorkflowIndexService(dir, path.join(dir, 'global_instructions.md'), 10);
+    await svc.init();
+
+    expect(svc.findWorkflow('Survivor', '1.0.0')).toMatchObject({
+      isTemp: true,
+      filePath: draft.filePath,
+    });
+  });
+
+  it('refuses with target_changed when a higher version appeared after the confirmation (GH #17)', async () => {
+    await svc.init();
+    const v1 = await svc.writePermanent(permanentWorkflow({ name: 'Moving', version: '1.0.0' }));
+    const confirmed = await confirm('Moving');
+    const v2 = await svc.writePermanent(permanentWorkflow({ name: 'Moving', version: '2.0.0' }));
+
+    const err = await svc.deleteWorkflow('Moving', undefined, confirmed).catch((e: unknown) => e);
+
+    expect((err as { _reason?: string })._reason).toBe('target_changed');
+    expect((await fs.stat(v1)).isFile()).toBe(true);
+    expect((await fs.stat(v2)).isFile()).toBe(true);
+    expect(svc.findByName('Moving')).toHaveLength(2);
+  });
+
+  it('refuses with target_changed when the same key now lives in a different file (GH #17)', async () => {
+    await svc.init();
+    const original = await svc.writePermanent(permanentWorkflow({ name: 'Relocated' }));
+    const confirmed = await confirm('Relocated', '1.0.0');
+    const movedDir = path.join(dir, 'categories', 'elsewhere');
+    const moved = path.join(movedDir, path.basename(original));
+    await fs.mkdir(movedDir, { recursive: true });
+    await fs.rename(original, moved);
+    // Any write rebuilds the index, which picks up the relocated file.
+    await svc.writePermanent(permanentWorkflow({ name: 'Unrelated' }));
+    expect(svc.findWorkflow('Relocated', '1.0.0')?.filePath).toBe(moved);
+
+    const err = await svc.deleteWorkflow('Relocated', '1.0.0', confirmed).catch((e: unknown) => e);
+
+    expect((err as { _reason?: string })._reason).toBe('target_changed');
+    expect((await fs.stat(moved)).isFile()).toBe(true);
+  });
+
+  it('refuses with target_changed when a draft was replaced by a permanent workflow of the same key (GH #17)', async () => {
+    await svc.init();
+    const draft = await svc.writeTemp(tempWorkflow({ name: 'Promoted' }));
+    const confirmed = await confirm('Promoted', '1.0.0');
+    await deleteResolved('Promoted', '1.0.0');
+    const permanent = await svc.writePermanent(permanentWorkflow({ name: 'Promoted' }));
+
+    const err = await svc.deleteWorkflow('Promoted', '1.0.0', confirmed).catch((e: unknown) => e);
+
+    expect(confirmed.source).toBe('temp');
+    expect((err as { _reason?: string })._reason).toBe('target_changed');
+    await expect(fs.stat(draft.filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.stat(permanent)).isFile()).toBe(true);
+  });
+
+  it('runs the target check inside the serialized delete, after a queued write lands (GH #17)', async () => {
+    await svc.init();
+    const v1 = await svc.writePermanent(permanentWorkflow({ name: 'Queued', version: '1.0.0' }));
+    const confirmed = await confirm('Queued');
+
+    const [written, deleted] = await Promise.allSettled([
+      svc.writePermanent(permanentWorkflow({ name: 'Queued', version: '2.0.0' })),
+      svc.deleteWorkflow('Queued', undefined, confirmed),
+    ]);
+
+    expect(written.status).toBe('fulfilled');
+    expect(deleted.status).toBe('rejected');
+    expect(((deleted as PromiseRejectedResult).reason as { _reason?: string })._reason).toBe(
+      'target_changed',
+    );
+    expect((await fs.stat(v1)).isFile()).toBe(true);
+    expect(svc.findByName('Queued')).toHaveLength(2);
+  });
+
+  it('throws tagged not_found when the confirmed target is gone by the time the delete runs (GH #17)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Vanishing' }));
+    const confirmed = await confirm('Vanishing', '1.0.0');
+    await deleteResolved('Vanishing', '1.0.0');
+
+    const err = await svc.deleteWorkflow('Vanishing', '1.0.0', confirmed).catch((e: unknown) => e);
+
+    expect((err as { _reason?: string })._reason).toBe('not_found');
+  });
+
+  // --- delete confirmations: server-side, single use, expiring ---
+
+  /** The pending-confirmation map, read directly to check that it stays bounded. */
+  const pendingConfirmations = () =>
+    (svc as unknown as { _deleteConfirmations: Map<string, unknown> })._deleteConfirmations;
+
+  it('issues a confirmation holding the target and a SHA-256 of its file bytes', async () => {
+    await svc.init();
+    const filePath = await svc.writePermanent(permanentWorkflow({ name: 'Hashed' }));
+
+    const { id, target } = await svc.requestDeleteConfirmation('Hashed', '1.0.0');
+
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(target).toEqual(svc.resolveTarget('Hashed', '1.0.0'));
+    expect(svc.takeDeleteConfirmation(id)).toEqual({
+      ...target,
+      contentHash: createHash('sha256')
+        .update(await fs.readFile(filePath))
+        .digest('hex'),
+    });
+  });
+
+  it('redeems a confirmation once; a second take and any unissued value return nothing', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Once' }));
+    const { id } = await svc.requestDeleteConfirmation('Once', '1.0.0');
+
+    expect(svc.takeDeleteConfirmation(id)).toBeDefined();
+    expect(svc.takeDeleteConfirmation(id)).toBeUndefined();
+    for (const unissued of [
+      undefined,
+      '',
+      'not-an-id',
+      '00000000-0000-4000-8000-000000000000',
+      42,
+    ]) {
+      expect(svc.takeDeleteConfirmation(unissued)).toBeUndefined();
+    }
+    expect(pendingConfirmations().size).toBe(0);
+  });
+
+  it('issues distinct ids for repeated prompts on one target, each redeemable once', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Twice Asked' }));
+    const first = await svc.requestDeleteConfirmation('Twice Asked', '1.0.0');
+    const second = await svc.requestDeleteConfirmation('Twice Asked', '1.0.0');
+
+    expect(second.id).not.toBe(first.id);
+    expect(svc.takeDeleteConfirmation(second.id)).toBeDefined();
+    expect(svc.takeDeleteConfirmation(first.id)).toBeDefined();
+  });
+
+  it('throws tagged not_found when asked to confirm a missing name or version', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Present' }));
+
+    for (const [name, version] of [
+      ['Absent', undefined],
+      ['Present', '9.9.9'],
+    ] as const) {
+      const err = await svc.requestDeleteConfirmation(name, version).catch((e: unknown) => e);
+      expect((err as { _reason?: string })._reason).toBe('not_found');
+    }
+    expect(pendingConfirmations().size).toBe(0);
+  });
+
+  it('throws tagged not_found when the indexed file is gone before the index catches up', async () => {
+    await svc.init();
+    const filePath = await svc.writePermanent(permanentWorkflow({ name: 'Stale Entry' }));
+    const confirmed = await confirm('Stale Entry', '1.0.0');
+    // Unlink without a rebuild in between: the entry is still indexed, its file is not there.
+    await fs.unlink(filePath);
+    expect(svc.findWorkflow('Stale Entry', '1.0.0')?.filePath).toBe(filePath);
+
+    for (const attempt of [
+      () => svc.requestDeleteConfirmation('Stale Entry', '1.0.0'),
+      () => svc.deleteWorkflow('Stale Entry', '1.0.0', confirmed),
+    ]) {
+      const err = await attempt().catch((e: unknown) => e);
+      expect((err as { _reason?: string })._reason).toBe('not_found');
+      expect((err as Error).message).not.toContain(dir);
+    }
+  });
+
+  describe('confirmation lifetime', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('redeems a confirmation up to 600 s after issue and refuses it from then on', async () => {
+      await svc.init();
+      await svc.writePermanent(permanentWorkflow({ name: 'Timed' }));
+      const early = await svc.requestDeleteConfirmation('Timed', '1.0.0');
+      const late = await svc.requestDeleteConfirmation('Timed', '1.0.0');
+
+      vi.setSystemTime(Date.now() + 599_999);
+      expect(svc.takeDeleteConfirmation(early.id)).toBeDefined();
+      vi.setSystemTime(Date.now() + 1);
+      expect(svc.takeDeleteConfirmation(late.id)).toBeUndefined();
+    });
+
+    it('prunes expired confirmations when the next one is issued', async () => {
+      await svc.init();
+      await svc.writePermanent(permanentWorkflow({ name: 'Pruned' }));
+      for (let i = 0; i < 5; i++) await svc.requestDeleteConfirmation('Pruned', '1.0.0');
+      expect(pendingConfirmations().size).toBe(5);
+
+      vi.setSystemTime(Date.now() + 600_000);
+      const fresh = await svc.requestDeleteConfirmation('Pruned', '1.0.0');
+
+      expect([...pendingConfirmations().keys()]).toEqual([fresh.id]);
+    });
+  });
+
+  it('holds at most 1,000 pending confirmations, dropping the oldest first', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Flooded' }));
+    const ids: string[] = [];
+    for (let i = 0; i < 1_001; i++) {
+      ids.push((await svc.requestDeleteConfirmation('Flooded', '1.0.0')).id);
+    }
+
+    expect(pendingConfirmations().size).toBe(1_000);
+    expect(svc.takeDeleteConfirmation(ids[0])).toBeUndefined();
+    expect(svc.takeDeleteConfirmation(ids[1])).toBeDefined();
+    expect(svc.takeDeleteConfirmation(ids[1_000])).toBeDefined();
+  });
+
+  // --- the confirmed file's content and path ---
+
+  it('refuses with target_changed when the confirmed file’s bytes changed in place', async () => {
+    await svc.init();
+    const filePath = await svc.writePermanent(permanentWorkflow({ name: 'Edited' }));
+    const confirmed = await confirm('Edited', '1.0.0');
+    await fs.appendFile(filePath, '# a hand edit\n', 'utf-8');
+
+    const err = await svc.deleteWorkflow('Edited', '1.0.0', confirmed).catch((e: unknown) => e);
+
+    expect((err as { _reason?: string })._reason).toBe('target_changed');
+    expect((err as Error).message).toBe(
+      `Workflow Edited@1.0.0 (permanent) at ${path.relative(dir, filePath)} had its content changed after it was confirmed`,
+    );
+    expect(await fs.readFile(filePath, 'utf-8')).toContain('# a hand edit');
+  });
+
+  it('names both relative paths when only the file behind the key moved', async () => {
+    await svc.init();
+    const original = await svc.writePermanent(permanentWorkflow({ name: 'Moved' }));
+    const confirmed = await confirm('Moved', '1.0.0');
+    const moved = path.join(dir, 'categories', 'elsewhere', path.basename(original));
+    await fs.mkdir(path.dirname(moved), { recursive: true });
+    await fs.rename(original, moved);
+    await svc.writePermanent(permanentWorkflow({ name: 'Unrelated' }));
+
+    const err = await svc.deleteWorkflow('Moved', '1.0.0', confirmed).catch((e: unknown) => e);
+
+    expect((err as Error).message).toBe(
+      `Workflow Moved@1.0.0 (permanent) is now stored at ${path.relative(dir, moved)}, not at ${path.relative(dir, original)} where it was confirmed`,
+    );
+  });
+
+  // --- a key another file still declares (GH #32) ---
+
+  it('reports the file now indexed under a deleted key that another permanent file declares (GH #32)', async () => {
+    const dirs = ['alpha', 'beta'].map((c) => path.join(dir, 'categories', c));
+    for (const d of dirs) {
+      await fs.mkdir(d, { recursive: true });
+      await fs.writeFile(path.join(d, 'dup.yaml'), makeWorkflowYaml({ name: 'Dup' }), 'utf-8');
+    }
+    await svc.init();
+    const indexed = svc.findWorkflow('Dup', '1.0.0')?.filePath as string;
+    const other = dirs.map((d) => path.join(d, 'dup.yaml')).find((p) => p !== indexed) as string;
+
+    const deleted = await deleteResolved('Dup', '1.0.0');
+
+    expect(deleted).toEqual({
+      name: 'Dup',
+      version: '1.0.0',
+      nowIndexedPath: path.relative(dir, other),
+    });
+    expect(svc.findWorkflow('Dup', '1.0.0')?.filePath).toBe(other);
+  });
+
+  it('reports a shadowed draft that takes over a deleted permanent key (GH #32)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Shadowed' }));
+    const draftPath = path.join(dir, 'temp', 'shadowed-draft.yaml');
+    await fs.mkdir(path.dirname(draftPath), { recursive: true });
+    await fs.writeFile(draftPath, makeWorkflowYaml({ name: 'Shadowed', temporary: true }), 'utf-8');
+
+    const deleted = await deleteResolved('Shadowed', '1.0.0');
+
+    expect(deleted.nowIndexedPath).toBe(path.join('temp', 'shadowed-draft.yaml'));
+    expect(svc.findWorkflow('Shadowed', '1.0.0')).toMatchObject({
+      isTemp: true,
+      filePath: draftPath,
+    });
+  });
+
+  it('omits nowIndexedPath when the deleted key no longer resolves, even if other versions do (GH #32)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Versions', version: '1.0.0' }));
+    await svc.writePermanent(permanentWorkflow({ name: 'Versions', version: '2.0.0' }));
+
+    const deleted = await deleteResolved('Versions');
+
+    expect(deleted).toStrictEqual({ name: 'Versions', version: '2.0.0' });
+    expect(svc.findWorkflow('Versions')?.workflow.version).toBe('1.0.0');
   });
 
   // --- multi-version coexistence (regression: fix #1) ---
@@ -579,9 +1153,9 @@ describe('WorkflowIndexService', () => {
     // All 3 files exist on disk
     const catDir = path.join(dir, 'categories', 'testing');
     const files = await fs.readdir(catDir);
-    expect(files).toContain('multi-ver-wf-1-0-0-workflow.yaml');
-    expect(files).toContain('multi-ver-wf-1-0-2-workflow.yaml');
-    expect(files).toContain('multi-ver-wf-2-0-0-workflow.yaml');
+    expect(files).toContain(fileNameFor('multi-ver-wf', '1.0.0'));
+    expect(files).toContain(fileNameFor('multi-ver-wf', '1.0.2'));
+    expect(files).toContain(fileNameFor('multi-ver-wf', '2.0.0'));
 
     // Lookup by version returns the correct workflow
     expect(svc.findWorkflow('multi-ver-wf', '1.0.0')?.workflow.version).toBe('1.0.0');
@@ -601,12 +1175,39 @@ describe('WorkflowIndexService', () => {
       category: 'testing',
       steps: [{ server: 'srv', tool: 'tool' }],
     };
-    await svc.writePermanent(wf);
+    /**
+     * A file the index does not hold, already at the computed path, so the index check passes and
+     * only the exclusive `wx` create can refuse the write. Its content fails the schema, so no
+     * watcher rebuild indexes it in between.
+     */
+    const placedPath = path.join(dir, 'categories', 'testing', fileNameFor(wf.name, wf.version));
+    await fs.mkdir(path.dirname(placedPath), { recursive: true });
+    await fs.writeFile(placedPath, 'placeholder: not a workflow\n', 'utf-8');
+    expect(svc.findWorkflow(wf.name, wf.version)).toBeUndefined();
 
-    // Second write of same version must fail with already_exists
     const err = await svc.writePermanent(wf).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as { _reason?: string })._reason).toBe('already_exists');
+    expect(await fs.readFile(placedPath, 'utf-8')).toBe('placeholder: not a workflow\n');
+  });
+
+  it('reports overwritten when an unindexed file already sits at the computed temp path (GH #20)', async () => {
+    await svc.init();
+    const placedPath = path.join(dir, 'temp', fileNameFor('Unindexed Draft', '1.0.0'));
+    await fs.mkdir(path.dirname(placedPath), { recursive: true });
+    await fs.writeFile(placedPath, 'placeholder: not a workflow\n', 'utf-8');
+    expect(svc.findWorkflow('Unindexed Draft', '1.0.0')).toBeUndefined();
+
+    const result = await svc.writeTemp(
+      tempWorkflow({ name: 'Unindexed Draft', created_date: '2026-03-03' }),
+    );
+
+    // The index had no entry, so only the write itself could have found the file there.
+    expect(result).toMatchObject({ status: 'overwritten', filePath: placedPath });
+    expect(result.workflow.created_date).toBe('2026-03-03');
+    const written = parseYaml(await fs.readFile(placedPath, 'utf-8')) as ParsedWorkflow;
+    expect(written).toMatchObject({ name: 'Unindexed Draft', created_date: '2026-03-03' });
+    expect(svc.findWorkflow('Unindexed Draft', '1.0.0')?.filePath).toBe(placedPath);
   });
 
   // --- cross-category duplicate guard (regression: GH #7) ---
@@ -648,6 +1249,41 @@ describe('WorkflowIndexService', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as { _reason?: string })._reason).toBe('invalid_category');
+  });
+
+  it('bounds the category slug at 255 characters, a whole directory name (GH #31)', async () => {
+    await svc.init();
+
+    const created = await svc.writePermanent(
+      permanentWorkflow({ name: 'Long Category', category: 'c'.repeat(255) }),
+    );
+    expect(path.basename(path.dirname(created))).toBe('c'.repeat(255));
+
+    const err = await svc
+      .writePermanent(permanentWorkflow({ name: 'Longer Category', category: 'c'.repeat(256) }))
+      .catch((e: unknown) => e);
+    expect((err as { _reason?: string })._reason).toBe('invalid_category');
+    expect((err as Error).message).toBe(
+      'Workflow category is too long — keep it to at most 255 characters after slugification',
+    );
+    expect(svc.findByName('Longer Category')).toHaveLength(0);
+  });
+
+  it('measures the category bound after slugification (GH #31)', async () => {
+    await svc.init();
+    // 300 characters of input, 299 after slugification; the punctuation below slugifies away.
+    const category = 'a '.repeat(150);
+    expect(slugify(category)).toHaveLength(299);
+
+    const err = await svc
+      .writePermanent(permanentWorkflow({ name: 'Spaced Category', category }))
+      .catch((e: unknown) => e);
+    expect((err as { _reason?: string })._reason).toBe('invalid_category');
+
+    const created = await svc.writePermanent(
+      permanentWorkflow({ name: 'Punctuated Category', category: `${'!'.repeat(200)}ok` }),
+    );
+    expect(path.basename(path.dirname(created))).toBe('ok');
   });
 
   // --- empty-slug guard (regression: fix #8) ---
@@ -714,7 +1350,436 @@ describe('WorkflowIndexService', () => {
     }
   });
 
+  // --- filenames carry a hash of the stored key (GH #21, #29) ---
+
+  const slugCollisionPairs = [
+    ['name punctuation', 'Slug A+B', '1.0.0', 'Slug A B', '1.0.0'],
+    ['name case', 'Deploy', '1.0.0', 'deploy', '1.0.0'],
+    ['non-ASCII letters', 'Café Plan', '1.0.0', 'Caf Plan', '1.0.0'],
+    ['prerelease case', 'RC Probe', '1.0.0-RC1', 'RC Probe', '1.0.0-rc1'],
+  ] as const;
+
+  it.each(slugCollisionPairs)(
+    'stores permanent keys whose slugs coincide (%s) at distinct paths (GH #21)',
+    async (_label, nameA, versionA, nameB, versionB) => {
+      await svc.init();
+      const a = await svc.writePermanent(permanentWorkflow({ name: nameA, version: versionA }));
+      const b = await svc.writePermanent(permanentWorkflow({ name: nameB, version: versionB }));
+
+      expect(b).not.toBe(a);
+      expect(path.basename(a)).toBe(fileNameFor(nameA, versionA));
+      expect(path.basename(b)).toBe(fileNameFor(nameB, versionB));
+      expect(svc.findWorkflow(nameA, versionA)?.filePath).toBe(a);
+      expect(svc.findWorkflow(nameB, versionB)?.filePath).toBe(b);
+    },
+  );
+
+  it.each(slugCollisionPairs)(
+    'stores temp keys whose slugs coincide (%s) at distinct paths without losing either (GH #21)',
+    async (_label, nameA, versionA, nameB, versionB) => {
+      await svc.init();
+      const a = await svc.writeTemp(tempWorkflow({ name: nameA, version: versionA }));
+      const b = await svc.writeTemp(tempWorkflow({ name: nameB, version: versionB }));
+
+      expect(a.status).toBe('created');
+      expect(b.status).toBe('created');
+      expect(b.filePath).not.toBe(a.filePath);
+      expect(svc.findWorkflow(nameA, versionA)?.filePath).toBe(a.filePath);
+      expect(svc.findWorkflow(nameB, versionB)?.filePath).toBe(b.filePath);
+      expect(await yamlFilesUnder(path.join(dir, 'temp'))).toHaveLength(2);
+    },
+  );
+
+  it('keeps the filename within 255 bytes for the longest name and a long prerelease (GH #21)', async () => {
+    await svc.init();
+    const version = `1.0.0-${'prerelease.'.repeat(20)}final`;
+
+    const permanent = await svc.writePermanent(
+      permanentWorkflow({ name: 'p'.repeat(200), version }),
+    );
+    const temp = await svc.writeTemp(tempWorkflow({ name: 't'.repeat(200), version }));
+
+    for (const filePath of [permanent, temp.filePath]) {
+      expect(Buffer.byteLength(path.basename(filePath))).toBeLessThanOrEqual(255);
+      expect(path.basename(filePath)).toMatch(/-[0-9a-f]{8}-workflow\.yaml$/);
+    }
+    expect(svc.findWorkflow('p'.repeat(200), version)?.filePath).toBe(permanent);
+    expect(svc.findWorkflow('t'.repeat(200), version)?.filePath).toBe(temp.filePath);
+  });
+
+  it('accepts names with no ASCII letters or digits under a placeholder name segment (GH #29)', async () => {
+    await svc.init();
+    const first = await svc.writePermanent(permanentWorkflow({ name: 'Рабочий процесс' }));
+    const second = await svc.writePermanent(permanentWorkflow({ name: 'Другой процесс' }));
+    const draft = await svc.writeTemp(tempWorkflow({ name: '日本語ワークフロー' }));
+
+    expect(path.basename(first)).toBe(fileNameFor('Рабочий процесс', '1.0.0', 'workflow'));
+    expect(path.basename(draft.filePath)).toBe(
+      fileNameFor('日本語ワークフロー', '1.0.0', 'workflow'),
+    );
+    expect(second).not.toBe(first);
+    expect(svc.findWorkflow('Рабочий процесс')?.filePath).toBe(first);
+    expect(svc.findWorkflow('Другой процесс')?.filePath).toBe(second);
+    expect(svc.findWorkflow('日本語ワークフロー')?.isTemp).toBe(true);
+
+    await deleteResolved('Рабочий процесс', '1.0.0');
+    expect(svc.findWorkflow('Рабочий процесс')).toBeUndefined();
+    await expect(fs.stat(first)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('resolves, conflicts on, and deletes a permanent file stored under the old naming (GH #21)', async () => {
+    const catDir = path.join(dir, 'categories', 'testing');
+    await fs.mkdir(catDir, { recursive: true });
+    const legacyPath = path.join(catDir, 'legacy-wf-1-0-0-workflow.yaml');
+    await fs.writeFile(legacyPath, makeWorkflowYaml({ name: 'Legacy WF' }), 'utf-8');
+    await svc.init();
+
+    expect(svc.findWorkflow('Legacy WF', '1.0.0')?.filePath).toBe(legacyPath);
+    for (const write of [
+      () => svc.writePermanent(permanentWorkflow({ name: 'Legacy WF', category: 'other' })),
+      () => svc.writeTemp(tempWorkflow({ name: 'Legacy WF' })),
+    ]) {
+      const err = await write().catch((e: unknown) => e);
+      expect((err as { _reason?: string })._reason).toBe('already_exists');
+    }
+    expect(await yamlFilesUnder(dir)).toEqual([
+      path.join('categories', 'testing', path.basename(legacyPath)),
+    ]);
+
+    await deleteResolved('Legacy WF', '1.0.0');
+    await expect(fs.stat(legacyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  // --- temp write outcome (GH #20) ---
+
+  it('reports created for a new draft and overwritten when replacing one, keeping its created_date (GH #20)', async () => {
+    await svc.init();
+    const first = await svc.writeTemp(
+      tempWorkflow({ created_date: '2026-01-01', last_updated_date: '2026-01-01' }),
+    );
+    const second = await svc.writeTemp(
+      tempWorkflow({
+        description: 'revised',
+        created_date: '2026-02-02',
+        last_updated_date: '2026-02-02',
+      }),
+    );
+
+    expect(first.status).toBe('created');
+    expect(second.status).toBe('overwritten');
+    expect(second.filePath).toBe(first.filePath);
+    expect(second.workflow.created_date).toBe('2026-01-01');
+    expect(second.workflow.last_updated_date).toBe('2026-02-02');
+
+    const written = parseYaml(await fs.readFile(second.filePath, 'utf-8')) as ParsedWorkflow;
+    expect(written).toMatchObject({
+      description: 'revised',
+      created_date: '2026-01-01',
+      last_updated_date: '2026-02-02',
+    });
+    expect(await yamlFilesUnder(path.join(dir, 'temp'))).toHaveLength(1);
+  });
+
+  it('overwrites a draft stored under an older filename in place (GH #20, #21)', async () => {
+    const tempDir = path.join(dir, 'temp');
+    await fs.mkdir(tempDir, { recursive: true });
+    const legacyPath = path.join(tempDir, 'hand-named-draft.yaml');
+    await fs.writeFile(
+      legacyPath,
+      JSON.stringify({
+        ...tempWorkflow({ name: 'Legacy Draft' }),
+        created_date: '2020-01-01',
+        last_updated_date: '2020-01-01',
+      }),
+      'utf-8',
+    );
+    await svc.init();
+
+    const result = await svc.writeTemp(
+      tempWorkflow({
+        name: 'Legacy Draft',
+        description: 'replacement',
+        created_date: '2026-09-23',
+        last_updated_date: '2026-09-23',
+      }),
+    );
+
+    expect(result).toMatchObject({ status: 'overwritten', filePath: legacyPath });
+    expect(await yamlFilesUnder(tempDir)).toEqual(['hand-named-draft.yaml']);
+    const written = parseYaml(await fs.readFile(legacyPath, 'utf-8')) as ParsedWorkflow;
+    expect(written).toMatchObject({
+      description: 'replacement',
+      created_date: '2020-01-01',
+      last_updated_date: '2026-09-23',
+    });
+  });
+
+  // --- one index entry per key across sources (GH #19) ---
+
+  it('rejects a temp draft for a key a permanent workflow holds and writes nothing (GH #19)', async () => {
+    await svc.init();
+    const permanentPath = await svc.writePermanent(permanentWorkflow({ name: 'Shadow Collision' }));
+
+    const err = await svc
+      .writeTemp(tempWorkflow({ name: 'Shadow Collision', description: 'draft' }))
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('already_exists');
+    expect(await yamlFilesUnder(path.join(dir, 'temp'))).toEqual([]);
+    expect(svc.findWorkflow('Shadow Collision', '1.0.0')).toMatchObject({
+      isTemp: false,
+      filePath: permanentPath,
+    });
+    await expect(deleteResolved('Shadow Collision', '1.0.0')).resolves.toEqual({
+      name: 'Shadow Collision',
+      version: '1.0.0',
+    });
+  });
+
+  it('rejects a permanent create for a key a temp draft holds and writes nothing (GH #19)', async () => {
+    await svc.init();
+    const draft = await svc.writeTemp(tempWorkflow({ name: 'Shadow Collision' }));
+
+    const err = await svc
+      .writePermanent(permanentWorkflow({ name: 'Shadow Collision' }))
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { _reason?: string })._reason).toBe('already_exists');
+    expect((err as Error).message).toContain('temporary draft');
+    expect(await yamlFilesUnder(path.join(dir, 'categories'))).toEqual([]);
+    expect(svc.findWorkflow('Shadow Collision', '1.0.0')).toMatchObject({
+      isTemp: true,
+      filePath: draft.filePath,
+    });
+  });
+
+  it('keeps different versions of one name across sources (GH #19)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Cross Source', version: '1.0.0' }));
+    await svc.writeTemp(tempWorkflow({ name: 'Cross Source', version: '2.0.0' }));
+
+    expect(svc.findWorkflow('Cross Source', '1.0.0')?.isTemp).toBe(false);
+    expect(svc.findWorkflow('Cross Source', '2.0.0')?.isTemp).toBe(true);
+    expect(svc.findByName('Cross Source')).toHaveLength(2);
+  });
+
+  it('resolves an on-disk same-key pair to the permanent entry and warns with both paths (GH #19)', async () => {
+    const warn = vi.spyOn(logger, 'warning');
+    const catDir = path.join(dir, 'categories', 'testing');
+    const tempDir = path.join(dir, 'temp');
+    await fs.mkdir(catDir, { recursive: true });
+    await fs.mkdir(tempDir, { recursive: true });
+    const permanentPath = path.join(catDir, 'pair.yaml');
+    const tempPath = path.join(tempDir, 'pair.yaml');
+    await fs.writeFile(permanentPath, makeWorkflowYaml({ name: 'Pair' }), 'utf-8');
+    await fs.writeFile(tempPath, makeWorkflowYaml({ name: 'Pair', temporary: true }), 'utf-8');
+
+    await svc.init();
+
+    expect(svc.findByName('Pair')).toHaveLength(1);
+    expect(svc.index.get('Pair@1.0.0')).toMatchObject({ isTemp: false, filePath: permanentPath });
+    const shadowWarning = warn.mock.calls
+      .map(([message]) => String(message))
+      .find((message) => message.includes('"Pair@1.0.0"'));
+    expect(shadowWarning).toContain(permanentPath);
+    expect(shadowWarning).toContain(tempPath);
+    expect(shadowWarning).toContain('shadowed');
+  });
+
+  // --- serialized writes (GH #30) ---
+
+  it('lets exactly one of two parallel creates of one key into different categories succeed (GH #30)', async () => {
+    await svc.init();
+
+    const results = await Promise.allSettled([
+      svc.writePermanent(permanentWorkflow({ name: 'Race Probe', category: 'alpha' })),
+      svc.writePermanent(permanentWorkflow({ name: 'Race Probe', category: 'beta' })),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(rejected.map((r) => (r.reason as { _reason?: string })._reason)).toEqual([
+      'already_exists',
+    ]);
+    expect(await yamlFilesUnder(path.join(dir, 'categories'))).toHaveLength(1);
+    expect(svc.findByName('Race Probe')).toHaveLength(1);
+  });
+
+  it.each([
+    ['permanent first', true],
+    ['temp first', false],
+  ])(
+    'lets exactly one of a parallel permanent/temp pair on one key succeed (%s) (GH #19, #30)',
+    async (_label, permanentFirst) => {
+      await svc.init();
+      const permanent = () => svc.writePermanent(permanentWorkflow({ name: 'Pair Race' }));
+      const temp = () => svc.writeTemp(tempWorkflow({ name: 'Pair Race' }));
+
+      const results = await Promise.allSettled(
+        permanentFirst ? [permanent(), temp()] : [temp(), permanent()],
+      );
+
+      expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected']);
+      const rejected = results[1] as PromiseRejectedResult;
+      expect((rejected.reason as { _reason?: string })._reason).toBe('already_exists');
+      expect(await yamlFilesUnder(dir)).toHaveLength(1);
+      expect(svc.findWorkflow('Pair Race', '1.0.0')?.isTemp).toBe(!permanentFirst);
+    },
+  );
+
+  it('serializes parallel temp writes of one key into one created and one overwritten (GH #20, #30)', async () => {
+    await svc.init();
+
+    const results = await Promise.all([
+      svc.writeTemp(
+        tempWorkflow({ name: 'Draft Race', description: 'first', created_date: '2026-01-01' }),
+      ),
+      svc.writeTemp(
+        tempWorkflow({ name: 'Draft Race', description: 'second', created_date: '2026-02-02' }),
+      ),
+    ]);
+
+    expect(results.map((r) => r.status)).toEqual(['created', 'overwritten']);
+    expect(await yamlFilesUnder(path.join(dir, 'temp'))).toHaveLength(1);
+    expect(svc.findWorkflow('Draft Race', '1.0.0')?.workflow.description).toBe('second');
+    /**
+     * The overwrite keeps the replaced draft's created_date only if it saw the first write's
+     * index entry — which the queue guarantees. Interleaved, the second write reads an empty
+     * index before the first lands and stamps its own date.
+     */
+    const written = parseYaml(await fs.readFile(results[1].filePath, 'utf-8')) as ParsedWorkflow;
+    expect(written.created_date).toBe('2026-01-01');
+    expect(results[1].workflow.created_date).toBe('2026-01-01');
+  });
+
+  it('completes a parallel delete of a category’s last workflow and a create into it (GH #24, #30)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Leaving', category: 'shared' }));
+
+    const [deleted, created] = await Promise.all([
+      deleteResolved('Leaving', '1.0.0'),
+      svc.writePermanent(permanentWorkflow({ name: 'Arriving', category: 'shared' })),
+    ]);
+
+    expect(deleted).toEqual({ name: 'Leaving', version: '1.0.0' });
+    expect((await fs.stat(created)).isFile()).toBe(true);
+    expect(svc.findWorkflow('Arriving', '1.0.0')?.filePath).toBe(created);
+  });
+
+  // --- empty category cleanup (GH #24) ---
+
+  it('removes a category directory emptied by a delete and keeps categories/ (GH #24)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Typo Category', category: 'tesitng' }));
+    const categoryDir = path.join(dir, 'categories', 'tesitng');
+    expect((await fs.stat(categoryDir)).isDirectory()).toBe(true);
+
+    await deleteResolved('Typo Category', '1.0.0');
+
+    await expect(fs.stat(categoryDir)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.stat(path.join(dir, 'categories'))).isDirectory()).toBe(true);
+  });
+
+  it('keeps a category directory that still holds another workflow (GH #24)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Stays', category: 'shared' }));
+    await svc.writePermanent(permanentWorkflow({ name: 'Goes', category: 'shared' }));
+
+    await deleteResolved('Goes', '1.0.0');
+
+    expect((await fs.stat(path.join(dir, 'categories', 'shared'))).isDirectory()).toBe(true);
+    expect(svc.findWorkflow('Stays', '1.0.0')).toBeDefined();
+  });
+
+  it('keeps a category directory that still holds a non-workflow file (GH #24)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Only One', category: 'notes' }));
+    const categoryDir = path.join(dir, 'categories', 'notes');
+    await fs.writeFile(path.join(categoryDir, '.DS_Store'), '', 'utf-8');
+
+    await deleteResolved('Only One', '1.0.0');
+
+    expect(await fs.readdir(categoryDir)).toEqual(['.DS_Store']);
+  });
+
+  it('never removes categories/ or a nested directory — only a direct child of categories/ (GH #24)', async () => {
+    const categoriesDir = path.join(dir, 'categories');
+    const nestedDir = path.join(categoriesDir, 'outer', 'inner');
+    await fs.mkdir(nestedDir, { recursive: true });
+    await fs.writeFile(
+      path.join(categoriesDir, 'root.yaml'),
+      makeWorkflowYaml({ name: 'At Root' }),
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(nestedDir, 'nested.yaml'),
+      makeWorkflowYaml({ name: 'Nested' }),
+      'utf-8',
+    );
+    await svc.init();
+
+    await deleteResolved('At Root', '1.0.0');
+    await deleteResolved('Nested', '1.0.0');
+
+    expect((await fs.stat(categoriesDir)).isDirectory()).toBe(true);
+    expect((await fs.stat(nestedDir)).isDirectory()).toBe(true);
+  });
+
+  it('logs a cleanup failure and still completes the delete (GH #24)', async () => {
+    const warn = vi.spyOn(logger, 'warning');
+    await svc.init();
+    const filePath = await svc.writePermanent(
+      permanentWorkflow({ name: 'Locked Parent', category: 'locked' }),
+    );
+    const categoriesDir = path.join(dir, 'categories');
+    // Removing categories/locked needs write permission on categories/; unlinking the file
+    // inside it does not.
+    await fs.chmod(categoriesDir, 0o555);
+
+    try {
+      await expect(deleteResolved('Locked Parent', '1.0.0')).resolves.toEqual({
+        name: 'Locked Parent',
+        version: '1.0.0',
+      });
+      await expect(fs.stat(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(svc.findWorkflow('Locked Parent', '1.0.0')).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(path.join(categoriesDir, 'locked')),
+      );
+    } finally {
+      await fs.chmod(categoriesDir, 0o755);
+    }
+  });
+
+  it('recreates a category directory on create after a delete removed it (GH #24)', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'First', category: 'cycle' }));
+    await deleteResolved('First', '1.0.0');
+
+    const filePath = await svc.writePermanent(
+      permanentWorkflow({ name: 'Second', category: 'cycle' }),
+    );
+
+    expect(path.dirname(filePath)).toBe(path.join(dir, 'categories', 'cycle'));
+    expect(svc.findWorkflow('Second', '1.0.0')?.filePath).toBe(filePath);
+  });
+
   // --- shutdown ---
+
+  it('indexes every bundled seed workflow (GH #22 regression guard)', async () => {
+    const seedDir = fileURLToPath(new URL('../../workflows-yaml/categories', import.meta.url));
+    await fs.cp(seedDir, path.join(dir, 'categories'), { recursive: true });
+    const seedFiles = (await fs.readdir(seedDir, { recursive: true })).filter((f) =>
+      /\.ya?ml$/.test(f),
+    );
+
+    await svc.init();
+
+    expect(seedFiles.length).toBeGreaterThan(0);
+    expect(svc.index.size).toBe(seedFiles.length);
+  });
 
   it('shutdown aborts the filesystem watcher', async () => {
     await svc.init();
@@ -780,7 +1845,7 @@ describe('initWorkflowIndexService / shutdownWorkflowIndexService', () => {
 
   afterEach(async () => {
     shutdownWorkflowIndexService();
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
 
   it('tears down the live service and clears the accessor', async () => {
