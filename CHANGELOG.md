@@ -4,7 +4,7 @@ All notable changes to this project. Each entry links to its full per-version fi
 
 ## [0.4.1](changelog/0.4.x/0.4.1.md) — 2026-10-07 · 🛡️ Security
 
-Delete confirmations are bound to the caller who was asked, and mcp-ts-core 0.13.13 adds a request ID to every error result and keeps stack traces and request context out of error data.
+Delete confirmations are bound to the caller who was asked, and the mcp-ts-core ^0.13.6 → ^0.13.13 upgrade adds a request ID to every error result and keeps stack traces and request context out of error data.
 
 ## [0.4.0](changelog/0.4.x/0.4.0.md) — 2026-09-23 · ⚠️ Breaking
 
