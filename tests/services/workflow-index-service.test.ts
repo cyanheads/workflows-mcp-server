@@ -16,6 +16,7 @@ import { parse as parseYaml } from 'yaml';
 import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
 import {
   type ConfirmedTarget,
+  type DeleteCaller,
   getWorkflowIndexService,
   initWorkflowIndexService,
   shutdownWorkflowIndexService,
@@ -231,10 +232,21 @@ describe('WorkflowIndexService', () => {
     await fs.rm(dir, { recursive: true, force: true, maxRetries: 5 });
   });
 
+  /** The caller every confirmation here is issued to and, unless a test says otherwise, redeemed by. */
+  const CALLER: DeleteCaller = { tenantId: 'default', clientId: '', subject: '' };
+
+  /** Issue a delete confirmation to {@link CALLER}. */
+  const request = (name: string, version: string | undefined) =>
+    svc.requestDeleteConfirmation(name, version, CALLER);
+
+  /** Redeem a delete confirmation as `caller`. */
+  const take = (id: unknown, caller: DeleteCaller = CALLER) =>
+    svc.takeDeleteConfirmation(id, caller);
+
   /** Issue and redeem a delete confirmation for whatever the name (and version) resolves to now. */
   const confirm = async (name: string, version?: string): Promise<ConfirmedTarget> => {
-    const { id } = await svc.requestDeleteConfirmation(name, version);
-    const confirmed = svc.takeDeleteConfirmation(id);
+    const { id } = await request(name, version);
+    const confirmed = take(id);
     if (!confirmed) throw new Error(`confirmation ${id} was not redeemable`);
     return confirmed;
   };
@@ -779,14 +791,14 @@ describe('WorkflowIndexService', () => {
     const permanent = await svc.writePermanent(permanentWorkflow({ name: 'Target Probe' }));
     const draft = await svc.writeTemp(tempWorkflow({ name: 'Target Probe', version: '2.0.0' }));
 
-    expect((await svc.requestDeleteConfirmation('Target Probe', '1.0.0')).target).toEqual({
+    expect((await request('Target Probe', '1.0.0')).target).toEqual({
       name: 'Target Probe',
       version: '1.0.0',
       source: 'permanent',
       path: path.relative(dir, permanent),
     });
     // An omitted version resolves to the highest version across both sources.
-    expect((await svc.requestDeleteConfirmation('Target Probe', undefined)).target).toEqual({
+    expect((await request('Target Probe', undefined)).target).toEqual({
       name: 'Target Probe',
       version: '2.0.0',
       source: 'temp',
@@ -912,7 +924,7 @@ describe('WorkflowIndexService', () => {
     await svc.init();
     const filePath = await svc.writePermanent(permanentWorkflow({ name: 'Hashed' }));
 
-    const { id, target } = await svc.requestDeleteConfirmation('Hashed', '1.0.0');
+    const { id, target } = await request('Hashed', '1.0.0');
 
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(target).toEqual({
@@ -921,7 +933,7 @@ describe('WorkflowIndexService', () => {
       source: 'permanent',
       path: path.relative(dir, filePath),
     });
-    expect(svc.takeDeleteConfirmation(id)).toEqual({
+    expect(take(id)).toEqual({
       ...target,
       contentHash: createHash('sha256')
         .update(await fs.readFile(filePath))
@@ -932,10 +944,10 @@ describe('WorkflowIndexService', () => {
   it('redeems a confirmation once; a second take and any unissued value return nothing', async () => {
     await svc.init();
     await svc.writePermanent(permanentWorkflow({ name: 'Once' }));
-    const { id } = await svc.requestDeleteConfirmation('Once', '1.0.0');
+    const { id } = await request('Once', '1.0.0');
 
-    expect(svc.takeDeleteConfirmation(id)).toBeDefined();
-    expect(svc.takeDeleteConfirmation(id)).toBeUndefined();
+    expect(take(id)).toBeDefined();
+    expect(take(id)).toBeUndefined();
     for (const unissued of [
       undefined,
       '',
@@ -943,20 +955,43 @@ describe('WorkflowIndexService', () => {
       '00000000-0000-4000-8000-000000000000',
       42,
     ]) {
-      expect(svc.takeDeleteConfirmation(unissued)).toBeUndefined();
+      expect(take(unissued)).toBeUndefined();
     }
     expect(pendingConfirmations().size).toBe(0);
+  });
+
+  it.each([
+    ['another tenant', { ...CALLER, tenantId: 'other' }],
+    ['another client', { ...CALLER, clientId: 'other' }],
+    ['another subject', { ...CALLER, subject: 'other' }],
+  ])('returns nothing when %s redeems the confirmation, and spends it', async (_label, other) => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Bound' }));
+    const { id } = await request('Bound', '1.0.0');
+
+    expect(take(id, other)).toBeUndefined();
+    expect(take(id)).toBeUndefined();
+    expect(pendingConfirmations().size).toBe(0);
+  });
+
+  it('redeems a confirmation issued to an authenticated caller for that caller', async () => {
+    await svc.init();
+    await svc.writePermanent(permanentWorkflow({ name: 'Owned' }));
+    const owner: DeleteCaller = { tenantId: 'acme', clientId: 'app', subject: 'alice' };
+    const { id } = await svc.requestDeleteConfirmation('Owned', '1.0.0', owner);
+
+    expect(take(id, { ...owner })).toMatchObject({ name: 'Owned', version: '1.0.0' });
   });
 
   it('issues distinct ids for repeated prompts on one target, each redeemable once', async () => {
     await svc.init();
     await svc.writePermanent(permanentWorkflow({ name: 'Twice Asked' }));
-    const first = await svc.requestDeleteConfirmation('Twice Asked', '1.0.0');
-    const second = await svc.requestDeleteConfirmation('Twice Asked', '1.0.0');
+    const first = await request('Twice Asked', '1.0.0');
+    const second = await request('Twice Asked', '1.0.0');
 
     expect(second.id).not.toBe(first.id);
-    expect(svc.takeDeleteConfirmation(second.id)).toBeDefined();
-    expect(svc.takeDeleteConfirmation(first.id)).toBeDefined();
+    expect(take(second.id)).toBeDefined();
+    expect(take(first.id)).toBeDefined();
   });
 
   it('throws tagged not_found when asked to confirm a missing name or version', async () => {
@@ -967,7 +1002,7 @@ describe('WorkflowIndexService', () => {
       ['Absent', undefined],
       ['Present', '9.9.9'],
     ] as const) {
-      const err = await svc.requestDeleteConfirmation(name, version).catch((e: unknown) => e);
+      const err = await request(name, version).catch((e: unknown) => e);
       expect((err as { _reason?: string })._reason).toBe('not_found');
     }
     expect(pendingConfirmations().size).toBe(0);
@@ -982,7 +1017,7 @@ describe('WorkflowIndexService', () => {
     expect(svc.findWorkflow('Stale Entry', '1.0.0')?.filePath).toBe(filePath);
 
     for (const attempt of [
-      () => svc.requestDeleteConfirmation('Stale Entry', '1.0.0'),
+      () => request('Stale Entry', '1.0.0'),
       () => svc.deleteWorkflow('Stale Entry', '1.0.0', confirmed),
     ]) {
       const err = await attempt().catch((e: unknown) => e);
@@ -1003,23 +1038,23 @@ describe('WorkflowIndexService', () => {
     it('redeems a confirmation up to 600 s after issue and refuses it from then on', async () => {
       await svc.init();
       await svc.writePermanent(permanentWorkflow({ name: 'Timed' }));
-      const early = await svc.requestDeleteConfirmation('Timed', '1.0.0');
-      const late = await svc.requestDeleteConfirmation('Timed', '1.0.0');
+      const early = await request('Timed', '1.0.0');
+      const late = await request('Timed', '1.0.0');
 
       vi.setSystemTime(Date.now() + 599_999);
-      expect(svc.takeDeleteConfirmation(early.id)).toBeDefined();
+      expect(take(early.id)).toBeDefined();
       vi.setSystemTime(Date.now() + 1);
-      expect(svc.takeDeleteConfirmation(late.id)).toBeUndefined();
+      expect(take(late.id)).toBeUndefined();
     });
 
     it('prunes expired confirmations when the next one is issued', async () => {
       await svc.init();
       await svc.writePermanent(permanentWorkflow({ name: 'Pruned' }));
-      for (let i = 0; i < 5; i++) await svc.requestDeleteConfirmation('Pruned', '1.0.0');
+      for (let i = 0; i < 5; i++) await request('Pruned', '1.0.0');
       expect(pendingConfirmations().size).toBe(5);
 
       vi.setSystemTime(Date.now() + 600_000);
-      const fresh = await svc.requestDeleteConfirmation('Pruned', '1.0.0');
+      const fresh = await request('Pruned', '1.0.0');
 
       expect([...pendingConfirmations().keys()]).toEqual([fresh.id]);
     });
@@ -1030,13 +1065,13 @@ describe('WorkflowIndexService', () => {
     await svc.writePermanent(permanentWorkflow({ name: 'Flooded' }));
     const ids: string[] = [];
     for (let i = 0; i < 1_001; i++) {
-      ids.push((await svc.requestDeleteConfirmation('Flooded', '1.0.0')).id);
+      ids.push((await request('Flooded', '1.0.0')).id);
     }
 
     expect(pendingConfirmations().size).toBe(1_000);
-    expect(svc.takeDeleteConfirmation(ids[0])).toBeUndefined();
-    expect(svc.takeDeleteConfirmation(ids[1])).toBeDefined();
-    expect(svc.takeDeleteConfirmation(ids[1_000])).toBeDefined();
+    expect(take(ids[0])).toBeUndefined();
+    expect(take(ids[1])).toBeDefined();
+    expect(take(ids[1_000])).toBeDefined();
   });
 
   // --- the confirmed file's content and path ---

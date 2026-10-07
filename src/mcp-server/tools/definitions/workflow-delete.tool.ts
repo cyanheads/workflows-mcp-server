@@ -9,6 +9,7 @@ import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import * as semver from 'semver';
 import {
   canonicalVersion,
+  type DeleteCaller,
   type DeletedWorkflow,
   getWorkflowIndexService,
   withoutFsPath,
@@ -94,7 +95,7 @@ export const workflowDelete = tool('workflow_delete', {
     {
       reason: 'confirmation_invalid',
       code: JsonRpcErrorCode.InvalidRequest,
-      when: 'The answering call does not carry a confirmation this server issued and has not yet redeemed: it is missing, unknown, already used, or older than 10 minutes.',
+      when: 'The answering call does not carry a confirmation this server issued to this caller and has not yet redeemed: it is missing, unknown, already used, older than 10 minutes, or issued to another caller.',
       recovery:
         'Nothing was deleted. Call workflow_delete again with only name and version so the user is asked to confirm; each prompt accepts one answer within 10 minutes.',
     },
@@ -122,16 +123,19 @@ export const workflowDelete = tool('workflow_delete', {
 
   async handler(input, ctx) {
     const svc = getWorkflowIndexService();
+    const caller: DeleteCaller = {
+      tenantId: ctx.tenantId ?? '',
+      clientId: ctx.auth?.clientId ?? '',
+      subject: ctx.auth?.sub ?? '',
+    };
     /**
      * `requestState` round-trips through the client, so it carries only the id of a confirmation
      * the service holds. Redeem it before anything else: an id works once, whatever this round
-     * turns out to be, and a replayed, expired, or invented one yields nothing.
+     * turns out to be, and a replayed, expired, invented, or other-caller one yields nothing.
      */
-    const confirmed = svc.takeDeleteConfirmation(ctx.inputs.state());
+    const confirmed = svc.takeDeleteConfirmation(ctx.inputs.state(), caller);
     if (!svc.ready) {
-      throw ctx.fail('index_unavailable', 'Workflow index is not ready yet', {
-        ...ctx.recoveryFor('index_unavailable'),
-      });
+      throw ctx.fail('index_unavailable', 'Workflow index is not ready yet');
     }
 
     const name = input.name.trim();
@@ -142,19 +146,17 @@ export const workflowDelete = tool('workflow_delete', {
     if (ctx.inputs.view('confirm').kind === 'missing') {
       let issued: Awaited<ReturnType<typeof svc.requestDeleteConfirmation>>;
       try {
-        issued = await svc.requestDeleteConfirmation(name, version);
+        issued = await svc.requestDeleteConfirmation(name, version, caller);
       } catch (err: unknown) {
         if (err instanceof Error && (err as { _reason?: string })._reason === 'not_found') {
-          throw ctx.fail('not_found', err.message, { ...ctx.recoveryFor('not_found') });
+          throw ctx.fail('not_found', err.message);
         }
         ctx.log.error(
           'Failed to read workflow for confirmation',
           err instanceof Error ? err : new Error(String(err)),
         );
         const safeMsg = err instanceof Error ? withoutFsPath(err.message) : 'Unknown read error';
-        throw ctx.fail('delete_failed', `Failed to read workflow for confirmation: ${safeMsg}`, {
-          ...ctx.recoveryFor('delete_failed'),
-        });
+        throw ctx.fail('delete_failed', `Failed to read workflow for confirmation: ${safeMsg}`);
       }
       const { target } = issued;
       return ctx.requestInput({
@@ -171,16 +173,13 @@ export const workflowDelete = tool('workflow_delete', {
     // Anything but an accepted `confirm: true` is final: declined, cancelled, false, or malformed.
     const answer = ctx.inputs.accepted('confirm', ConfirmSchema);
     if (!answer?.confirm) {
-      throw ctx.fail('cancelled', 'Deletion cancelled by the user — nothing was deleted.', {
-        ...ctx.recoveryFor('cancelled'),
-      });
+      throw ctx.fail('cancelled', 'Deletion cancelled by the user — nothing was deleted.');
     }
 
     if (!confirmed) {
       throw ctx.fail(
         'confirmation_invalid',
         'This answer does not match a pending confirmation prompt from this server — nothing was deleted.',
-        { ...ctx.recoveryFor('confirmation_invalid') },
       );
     }
 
@@ -190,12 +189,10 @@ export const workflowDelete = tool('workflow_delete', {
     } catch (err: unknown) {
       const reason = (err as { _reason?: string })._reason;
       if (err instanceof Error && reason === 'not_found') {
-        throw ctx.fail('not_found', err.message, { ...ctx.recoveryFor('not_found') });
+        throw ctx.fail('not_found', err.message);
       }
       if (err instanceof Error && reason === 'target_changed') {
-        throw ctx.fail('target_changed', `${err.message} — nothing was deleted.`, {
-          ...ctx.recoveryFor('target_changed'),
-        });
+        throw ctx.fail('target_changed', `${err.message} — nothing was deleted.`);
       }
       ctx.log.error(
         'Failed to delete workflow',
@@ -203,9 +200,7 @@ export const workflowDelete = tool('workflow_delete', {
       );
       // Strip filesystem paths from the user-visible message.
       const safeMsg = err instanceof Error ? withoutFsPath(err.message) : 'Unknown delete error';
-      throw ctx.fail('delete_failed', `Failed to delete workflow: ${safeMsg}`, {
-        ...ctx.recoveryFor('delete_failed'),
-      });
+      throw ctx.fail('delete_failed', `Failed to delete workflow: ${safeMsg}`);
     }
 
     ctx.log.info('workflow_delete completed', {

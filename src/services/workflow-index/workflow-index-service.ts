@@ -200,6 +200,18 @@ export interface ConfirmedTarget extends WorkflowTarget {
 }
 
 /**
+ * The caller a delete confirmation is issued to, and the only one that can redeem it. The pending
+ * store is process-wide rather than tenant-scoped, so the tenant is bound alongside the
+ * authenticated client and subject. Each field is empty when the request carries none — stdio and
+ * `MCP_AUTH_MODE=none`, where every caller is the same principal.
+ */
+export interface DeleteCaller {
+  clientId: string;
+  subject: string;
+  tenantId: string;
+}
+
+/**
  * How long a delete confirmation stays redeemable: the SDK legacy shim's per-round timeout for an
  * elicitation (600 s), the longest a 2025-era client's answer can take to arrive.
  */
@@ -287,7 +299,7 @@ export class WorkflowIndexService {
    */
   private readonly _deleteConfirmations = new Map<
     string,
-    { confirmed: ConfirmedTarget; expiresAt: number }
+    { caller: DeleteCaller; confirmed: ConfirmedTarget; expiresAt: number }
   >();
   private readonly workflowsDir: string;
   private readonly globalInstructionsPath: string;
@@ -369,15 +381,18 @@ export class WorkflowIndexService {
   /**
    * Resolve a delete target the way {@link findWorkflow} does — an omitted version picks the
    * highest across permanent workflows and temporary drafts — hash its file, and record a pending
-   * confirmation for it under a random single-use id. The id is all that travels to the client:
-   * the record stays here, so a confirmation this server never issued, already redeemed, or let
-   * expire ({@link DELETE_CONFIRMATION_TTL_MS}) cannot be presented. Runs in the mutation queue
-   * so the hash is of the file the index resolved at that moment. Throws a tagged `not_found`
-   * error when nothing matches or the indexed file is already gone.
+   * confirmation for it, bound to `caller`, under a random single-use id. The id is all that
+   * travels to the client: the record stays here, so a confirmation this server never issued,
+   * already redeemed, let expire ({@link DELETE_CONFIRMATION_TTL_MS}), or issued to another caller
+   * cannot be presented. The store holds delete confirmations only, so the record carries no
+   * operation field to keep another tool's id out. Runs in the mutation queue so the hash is of the
+   * file the index resolved at that moment. Throws a tagged `not_found` error when nothing matches
+   * or the indexed file is already gone.
    */
   async requestDeleteConfirmation(
     name: string,
     version: string | undefined,
+    caller: DeleteCaller,
   ): Promise<{ id: string; target: WorkflowTarget }> {
     return await this.exclusive(async () => {
       const { entry, target } = this.resolveEntry(name, version);
@@ -391,6 +406,7 @@ export class WorkflowIndexService {
       }
       const id = randomUUID();
       this._deleteConfirmations.set(id, {
+        caller,
         confirmed: { ...target, contentHash },
         expiresAt: now + DELETE_CONFIRMATION_TTL_MS,
       });
@@ -400,14 +416,22 @@ export class WorkflowIndexService {
 
   /**
    * Redeem a pending confirmation: remove it and return its target, or undefined when `id` is not
-   * a pending, unexpired confirmation. Removal comes first, so an id works once however the round
-   * that presented it turns out.
+   * a pending, unexpired confirmation issued to `caller`. Removal comes first, so an id works once
+   * however the round that presented it turns out — including a round from another caller.
    */
-  takeDeleteConfirmation(id: unknown): ConfirmedTarget | undefined {
+  takeDeleteConfirmation(id: unknown, caller: DeleteCaller): ConfirmedTarget | undefined {
     if (typeof id !== 'string') return;
     const pending = this._deleteConfirmations.get(id);
     this._deleteConfirmations.delete(id);
     if (!pending || pending.expiresAt <= Date.now()) return;
+    const issuedTo = pending.caller;
+    if (
+      issuedTo.tenantId !== caller.tenantId ||
+      issuedTo.clientId !== caller.clientId ||
+      issuedTo.subject !== caller.subject
+    ) {
+      return;
+    }
     return pending.confirmed;
   }
 

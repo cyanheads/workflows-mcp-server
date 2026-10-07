@@ -455,6 +455,71 @@ describe('workflowDelete', () => {
     expect(svc.index.has('deploy-app@2.0.0')).toBe(true);
   });
 
+  // --- the confirmation is bound to the caller it was issued to ---
+
+  describe('caller binding', () => {
+    const input = { name: 'deploy-app', version: '2.0.0' };
+    const ALICE = { clientId: 'client-a', sub: 'alice', scopes: [] };
+    const ASKED = { auth: ALICE, tenantId: 'tenant-a' };
+
+    /** One round of the handler under the given caller, answering when `answer` is given. */
+    function roundAs(
+      caller: { auth?: typeof ALICE; tenantId?: string },
+      answer?: { requestState?: unknown },
+    ) {
+      return Promise.resolve(
+        workflowDelete.handler(
+          workflowDelete.input.parse(input),
+          createMockContext({
+            errors: workflowDelete.errors,
+            ...caller,
+            ...(answer && {
+              inputResponses: { confirm: ACCEPT },
+              requestState: answer.requestState,
+            }),
+          }),
+        ),
+      );
+    }
+
+    it('deletes when the caller who was asked answers', async () => {
+      const asked = await expectInputRequired(() => roundAs(ASKED));
+
+      await expect(roundAs(ASKED, asked)).resolves.toMatchObject({
+        status: 'deleted',
+        version: '2.0.0',
+      });
+      expect(svc.index.has('deploy-app@2.0.0')).toBe(false);
+    });
+
+    it.each([
+      [
+        'another subject of the same client',
+        { auth: { ...ALICE, sub: 'bob' }, tenantId: 'tenant-a' },
+      ],
+      ['another client', { auth: { ...ALICE, clientId: 'client-b' }, tenantId: 'tenant-a' }],
+      ['another tenant', { auth: ALICE, tenantId: 'tenant-b' }],
+      ['an unauthenticated caller', { tenantId: 'tenant-a' }],
+    ])(
+      'refuses with confirmation_invalid when %s answers, deletes nothing, and spends the prompt',
+      async (_label, other) => {
+        const deleteWorkflow = vi.spyOn(svc, 'deleteWorkflow');
+        const asked = await expectInputRequired(() => roundAs(ASKED));
+
+        await expect(roundAs(other, asked)).rejects.toMatchObject({
+          code: JsonRpcErrorCode.InvalidRequest,
+          data: { reason: 'confirmation_invalid' },
+        });
+        // The other caller's round redeemed the record, so the asked caller's answer is refused too.
+        await expect(roundAs(ASKED, asked)).rejects.toMatchObject({
+          data: { reason: 'confirmation_invalid' },
+        });
+        expect(deleteWorkflow).not.toHaveBeenCalled();
+        expect(svc.index.has('deploy-app@2.0.0')).toBe(true);
+      },
+    );
+  });
+
   describe('confirmation expiry', () => {
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ['Date'] });
