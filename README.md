@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.4.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.0.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.0-blueviolet.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.4.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.2.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.2-blueviolet.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -39,66 +39,38 @@ A declarative workflow library for LLM agents, backed by local YAML files. Store
 
 ### `workflow_list` <sub>tool</sub>
 
-- Optional keyword `query` filter (case-insensitive substring across workflow name and description)
-- Optional category filter (case-insensitive substring match)
-- Optional tag filter (case-insensitive AND match — all listed tags must be present)
-- Filter values are trimmed of leading and trailing whitespace before matching; a blank `query` or `category` applies no filter
-- Set `includeTools: true` to surface the unique `server/tool` pairs used across each workflow's steps
-- Temporary workflows are excluded; results sorted by name, then by semver precedence descending (a release before its prereleases)
-- Empty results echo the applied filters with a hint to broaden
+- Optional `query` (name and description), `category` (substring), and `tags` (all must match) filters, case-insensitive; temporary drafts are never listed
+- Sorted by name, then highest version first; an empty result carries a `notice` echoing the applied filters
+- `includeTools: true` adds each workflow's unique `server/tool` pairs
 
 ---
 
 ### `workflow_get` <sub>tool</sub>
 
-- Semver-aware: omit `version` to get the highest available match; specify a version for an exact lookup
-- A `version` that is not valid semver is rejected as invalid arguments before any lookup; a tolerated spelling (`v1.0.0`, surrounding whitespace, build metadata) resolves to its canonical form (`1.0.0`)
-- `name` is trimmed before lookup, matching how the create tools store it; a blank `name` is rejected as invalid arguments
-- Returns the full workflow YAML structure with all steps and metadata
-- Injects the `global_instructions.md` content as `globalInstructions` — apply these when executing the workflow; `null` when the file is absent
-- Temporary workflows are accessible here even though excluded from `workflow_list`
-- Template placeholders (`{{input.foo}}`, `{{steps.X.output.Y}}`) are returned verbatim — the server never interpolates them
+- `name` plus an optional semver `version`; omit `version` for the highest available, drafts included
+- Returns the full workflow, its `source` (`permanent` or `temp`), and `globalInstructions` from `global_instructions.md` (`null` when absent); fails with `not_found` or `version_not_found`
+- Template placeholders such as `{{input.foo}}` come back verbatim — the server never interpolates them
 
 ---
 
 ### `workflow_create` <sub>tool</sub>
 
-- Workflow stored at `categories/<slugified-category>/<slugified-name>-<slugified-version>-<hash>-workflow.yaml`, where `<hash>` is the first 8 hex characters of SHA-256 over `name@version` — one file per `name@version`, so multiple versions coexist and keys whose slugs coincide (`Deploy` / `deploy`, `Café Plan` / `Caf Plan`) never share a file
-- Any name with visible content is accepted; one with no ASCII letters or digits (e.g. `Рабочий процесс`) uses `workflow` as the name part of its filename
-- Rejects if `name@version` already exists, as a permanent workflow or a temporary draft — bump the version to create a new revision, or delete the draft with `workflow_delete` to store it permanently
-- Concurrent creates of one `name@version` produce one workflow and one `already_exists`, even across categories
-- `version` is stored in canonical semver form: a leading `v`, surrounding whitespace, and build metadata are dropped, so `v1.0.0+build.5` is stored, keyed, and retrieved as `1.0.0`
-- Rejects a whitespace-only `name`, `description`, `author`, `category`, or step `server`/`tool` with `invalid_input`
-- Rejects a `name` longer than 200 characters or a `category` longer than 255 characters after slugification with `invalid_input`, so every file and directory name fits the 255-byte limit
-- Server stamps `created_date` and `last_updated_date` automatically
-- Index and snapshot rebuilt after write; filesystem watcher also fires (idempotent, debounced)
-- A filesystem failure is reported as `write_failed` with the error code and description only, never the absolute path
+- `name`, semver `version`, `description`, `author`, `category`, and `steps` (plus optional `tags`); stored as one file per `name@version` under `categories/<category>/`, with created and updated dates stamped
+- Returns the `key` (`name@version`) and `filePath`; fails with `already_exists` when a permanent workflow or a draft holds the key, `invalid_input`, or `write_failed`
 
 ---
 
 ### `workflow_create_temp` <sub>tool</sub>
 
-- Writing a `name@version` that already has a draft overwrites that draft in place: `status` is `"created"` for a new draft and `"overwritten"` for a replaced one, and an overwrite keeps the draft's original `created_date`
-- Rejects a `name@version` held by a permanent workflow with `already_exists`
-- Stored under `temp/` with the same filename scheme, canonical `version` storage, and whitespace-only field rejection as `workflow_create`
-- Indexed and accessible via `workflow_get` but excluded from `workflow_list` results; a `notice` field saying so rides along in both `structuredContent` and the text output
-- Drafts persist: a draft stays under `temp/` across restarts until `workflow_delete` removes it — nothing expires drafts or cleans them up
-- Useful for one-shot plans, scaffolding, or drafts not yet ready for the permanent library
+- The `workflow_create` fields minus `category`; stored under `temp/`, retrievable with `workflow_get`, never listed, and kept until `workflow_delete` removes it
+- `status` is `created`, or `overwritten` when it replaced the draft of the same key (keeping that draft's `created_date`); a key held by a permanent workflow fails with `already_exists`
 
 ---
 
 ### `workflow_delete` <sub>tool</sub>
 
-- Deletes permanent workflows and temporary drafts alike; the output's `source` (`"permanent"` or `"temp"`) says which was removed
-- Semver-aware: omit `version` to delete the highest available match across permanent workflows and drafts; specify a version to target one exactly
-- Same `version` and `name` rules as `workflow_get`: non-semver input is rejected before anything is deleted, a tolerated spelling targets its canonical form, and a padded `name` is trimmed
-- Asks the user first: the call returns a confirmation prompt naming the resolved `name@version`, its source, and its file path relative to `WORKFLOWS_DIR`, and deletes only when the user answers `confirm: true`. Answering `false`, declining, or cancelling fails with `cancelled` and deletes nothing
-- The server keeps each prompt's record and hands the client only a random id for it. An answer must come back within 10 minutes and works once; an answer to a prompt the server never issued, already answered, or issued too long ago fails with `confirmation_invalid` and deletes nothing
-- The file is deleted only if it is still the one the user saw: if the name resolves to a different workflow or file, or the file's content changed, by the time the answer arrives, the call fails with `target_changed` and deletes nothing
-- Needs a client that can show the prompt (elicitation); a client without it cannot delete, and there is no way around the prompt
-- Irreversible: the file is removed and the workflow no longer appears in `workflow_list` or `workflow_get` — unless another hand-authored file declares the same `name@version`. That copy then takes its place, and the result carries a `notice` naming its path relative to `WORKFLOWS_DIR`
-- Deleting a draft frees its `name@version`, so `workflow_create` can then store it permanently
-- Deleting the last workflow in a `categories/<slug>/` directory removes that emptied directory; a directory still holding any file stays
+- `name` plus an optional `version` (omitted: the highest across permanent workflows and drafts); the user confirms the resolved `name@version`, source, and file before anything is deleted, so a client without elicitation cannot delete
+- Returns the deleted workflow's `source`, plus a `notice` when another file declaring the same key now takes its place; fails with `cancelled`, `confirmation_invalid` (a prompt never issued, already answered, older than 10 minutes, or issued to another caller), `target_changed` (the file or its content changed after the user saw it), or `not_found`
 
 ## Features
 
@@ -106,15 +78,11 @@ Built on [`@cyanheads/mcp-ts-core`](https://github.com/cyanheads/mcp-ts-core): s
 
 Workflow library:
 
-- YAML workflow files validated against a schema at index time; invalid files (including a whitespace-only `name`, `description`, `author`, `category`, or step `server`/`tool`) are skipped and logged, never crash the server
-- Versions indexed in canonical semver form — a file authored as `version: v1.0.0` indexes as `name@1.0.0`
-- One index entry per `name@version`: a permanent workflow outranks a temporary draft with the same key (the draft is skipped with a warning naming both files), and two files of one kind that share a key log a duplicate warning, with the last one read winning
-- In-memory index keyed by `name@version`, built at startup from `workflows-yaml/categories/` and `workflows-yaml/temp/` recursively, kept fresh by a debounced recursive filesystem watcher on any add/change/remove
-- The index reads each workflow's identity from its file content, never its filename, so files named under any scheme — including the earlier `<name>-<version>-workflow.yaml` — are listed, retrieved, and deleted like any other
-- Creates and deletes run one at a time within the server, so each one's existence check holds until its write lands
-- Semver-aware lookup — latest version returned when `version` is omitted
-- `_index.json` snapshot written on every rebuild for external tooling and debugging
-- Configurable `WORKFLOWS_DIR`, `GLOBAL_INSTRUCTIONS_PATH`, and debounce interval
+- YAML files under `categories/` and `temp/` are validated at index time; an invalid file is skipped and logged, never crashes the server
+- In-memory index keyed by `name@version`, read from each file's content rather than its name and kept fresh by a debounced recursive watcher; a permanent workflow outranks a draft with the same key
+- Versions are canonical semver everywhere: a leading `v`, surrounding whitespace, and build metadata are dropped, so `v1.0.0+build.5` is stored, keyed, and looked up as `1.0.0`
+- Creates and deletes run one at a time, so each existence check holds until its write lands; filenames carry a hash of `name@version`, so keys whose slugs coincide never share a file
+- An `_index.json` snapshot is written on every rebuild for external tooling and debugging
 
 Agent-friendly output:
 
@@ -240,7 +208,9 @@ cp .env.example .env
 | `MCP_HTTP_PORT` | Port for HTTP server. | `3010` |
 | `MCP_SESSION_MODE` | HTTP sessions: `auto` or `stateful`. `workflow_delete`'s confirmation prompt needs a live session, so HTTP startup with `stateless` fails with a configuration error. Ignored over stdio. | `stateful`, declared in `src/index.ts` |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
+| `MCP_REQUEST_STATE_KEY` | Seals the `requestState` a confirmation round carries (≥ 32 bytes, the same on every instance, e.g. `openssl rand -base64 32`); any state the server did not seal is rejected before the handler runs. `workflow_delete`'s round carries its confirmation id, so set it for HTTP deployments. | unset |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
+| `LOG_TOOL_FAILURE_PAYLOADS` | Log each failed tool call's arguments and result, redacted by key name and capped at `LOG_TOOL_FAILURE_PAYLOAD_MAX_BYTES` (default `16384`). A secret inside a free-form value is not redacted. | `false` |
 | `OTEL_ENABLED` | Enable [OpenTelemetry instrumentation](https://github.com/cyanheads/mcp-ts-core/tree/main/docs/telemetry) (spans, metrics, completion logs). | `false` |
 
 See [`.env.example`](./.env.example) for the full list of optional overrides.
