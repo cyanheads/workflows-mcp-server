@@ -91,9 +91,7 @@ export const workflowList = tool('workflow_list', {
   handler(input, ctx) {
     const svc = getWorkflowIndexService();
     if (!svc.ready) {
-      throw ctx.fail('index_unavailable', 'Workflow index is not ready yet', {
-        ...ctx.recoveryFor('index_unavailable'),
-      });
+      throw ctx.fail('index_unavailable', 'Workflow index is not ready yet');
     }
 
     const { includeTools } = input;

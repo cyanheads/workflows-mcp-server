@@ -115,9 +115,7 @@ export const workflowGet = tool('workflow_get', {
   async handler(input, ctx) {
     const svc = getWorkflowIndexService();
     if (!svc.ready) {
-      throw ctx.fail('index_unavailable', 'Workflow index is not ready yet', {
-        ...ctx.recoveryFor('index_unavailable'),
-      });
+      throw ctx.fail('index_unavailable', 'Workflow index is not ready yet');
     }
 
     const name = input.name.trim();
@@ -135,12 +133,9 @@ export const workflowGet = tool('workflow_get', {
         throw ctx.fail(
           'version_not_found',
           `Workflow "${name}" does not have version "${version}". Available: ${available}`,
-          { ...ctx.recoveryFor('version_not_found') },
         );
       }
-      throw ctx.fail('not_found', `No workflow named "${name}" found`, {
-        ...ctx.recoveryFor('not_found'),
-      });
+      throw ctx.fail('not_found', `No workflow named "${name}" found`);
     }
 
     const globalInstructions = await svc.readGlobalInstructions();

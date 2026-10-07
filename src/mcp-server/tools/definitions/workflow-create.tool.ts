@@ -150,9 +150,7 @@ export const workflowCreate = tool('workflow_create', {
     // index would skip at rebuild must never be written in the first place.
     const issues = findWorkflowIssues(workflow);
     if (issues) {
-      throw ctx.fail('invalid_input', `Invalid workflow — ${issues}`, {
-        ...ctx.recoveryFor('invalid_input'),
-      });
+      throw ctx.fail('invalid_input', `Invalid workflow — ${issues}`);
     }
 
     let filePath: string;
@@ -161,7 +159,7 @@ export const workflowCreate = tool('workflow_create', {
     } catch (err: unknown) {
       const reason = (err as { _reason?: string })._reason;
       if (err instanceof Error && reason === 'already_exists') {
-        throw ctx.fail('already_exists', err.message, { ...ctx.recoveryFor('already_exists') });
+        throw ctx.fail('already_exists', err.message);
       }
       if (
         err instanceof Error &&
@@ -169,7 +167,7 @@ export const workflowCreate = tool('workflow_create', {
       ) {
         // Slug validation failures (name or category) are bad input, not server faults —
         // surface as ValidationError with the service's message (no path leak).
-        throw ctx.fail('invalid_input', err.message, { ...ctx.recoveryFor('invalid_input') });
+        throw ctx.fail('invalid_input', err.message);
       }
       ctx.log.error(
         'Failed to write workflow',
@@ -177,9 +175,7 @@ export const workflowCreate = tool('workflow_create', {
       );
       // Strip filesystem paths from the user-visible message.
       const safeMsg = err instanceof Error ? withoutFsPath(err.message) : 'Unknown write error';
-      throw ctx.fail('write_failed', `Failed to write workflow: ${safeMsg}`, {
-        ...ctx.recoveryFor('write_failed'),
-      });
+      throw ctx.fail('write_failed', `Failed to write workflow: ${safeMsg}`);
     }
 
     ctx.log.info('workflow_create completed', {
