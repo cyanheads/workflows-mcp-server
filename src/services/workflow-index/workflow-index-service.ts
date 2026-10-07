@@ -202,8 +202,9 @@ export interface ConfirmedTarget extends WorkflowTarget {
 /**
  * The caller a delete confirmation is issued to, and the only one that can redeem it. The pending
  * store is process-wide rather than tenant-scoped, so the tenant is bound alongside the
- * authenticated client and subject. Each field is empty when the request carries none — stdio and
- * `MCP_AUTH_MODE=none`, where every caller is the same principal.
+ * authenticated client and subject. Client and subject are empty without auth — stdio and
+ * `MCP_AUTH_MODE=none`, where every caller is the same principal — and the tenant is empty only
+ * for a token without a `tid` claim.
  */
 export interface DeleteCaller {
   clientId: string;
