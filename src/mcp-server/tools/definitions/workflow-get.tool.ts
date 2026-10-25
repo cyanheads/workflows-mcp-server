@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
 import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
 import {
@@ -157,15 +158,21 @@ export const workflowGet = tool('workflow_get', {
     const wf = result.workflow as ParsedWorkflow;
     const lines: string[] = [];
 
-    lines.push(`# ${wf.name} v${wf.version}`);
-    lines.push(`**Source:** ${result.source} | **Author:** ${wf.author}`);
-    if (wf.category) lines.push(`**Category:** ${wf.category}`);
+    // CommonMark headings cannot contain the hard breaks used to preserve multiline values.
+    const titlePrefix = /[\r\n]/.test(wf.name) ? '**Workflow:** ' : '# ';
+    lines.push(
+      `${titlePrefix}${escapeMarkdownInline(wf.name)} v${escapeMarkdownInline(wf.version)}`,
+    );
+    lines.push(`**Source:** ${result.source} | **Author:** ${escapeMarkdownInline(wf.author)}`);
+    if (wf.category) lines.push(`**Category:** ${escapeMarkdownInline(wf.category)}`);
     if (wf.temporary) lines.push('**Temporary:** yes');
-    if (wf.tags && wf.tags.length > 0) lines.push(`**Tags:** ${wf.tags.join(', ')}`);
-    if (wf.created_date) lines.push(`**Created:** ${wf.created_date}`);
-    if (wf.last_updated_date) lines.push(`**Updated:** ${wf.last_updated_date}`);
+    if (wf.tags && wf.tags.length > 0)
+      lines.push(`**Tags:** ${wf.tags.map(escapeMarkdownInline).join(', ')}`);
+    if (wf.created_date) lines.push(`**Created:** ${escapeMarkdownInline(wf.created_date)}`);
+    if (wf.last_updated_date)
+      lines.push(`**Updated:** ${escapeMarkdownInline(wf.last_updated_date)}`);
     lines.push('');
-    lines.push(wf.description);
+    lines.push(escapeMarkdownInline(wf.description));
     lines.push('');
 
     if (result.globalInstructions) {
@@ -179,15 +186,19 @@ export const workflowGet = tool('workflow_get', {
 
     lines.push(`## Steps (${wf.steps.length})`);
     wf.steps.forEach((step, i) => {
-      lines.push(`### Step ${i + 1}: ${step.name ?? step.action ?? step.tool}`);
-      lines.push(`**Server:** ${step.server} | **Tool:** ${step.tool}`);
-      if (step.action) lines.push(`**Action:** ${step.action}`);
-      if (step.description) lines.push(step.description);
-      if (step.forEach) lines.push(`**For each:** ${step.forEach}`);
+      const title = step.name ?? step.action ?? step.tool;
+      const prefix = /[\r\n]/.test(title) ? `**Step ${i + 1}:** ` : `### Step ${i + 1}: `;
+      lines.push(`${prefix}${escapeMarkdownInline(title)}`);
+      lines.push(
+        `**Server:** ${escapeMarkdownInline(step.server)} | **Tool:** ${escapeMarkdownInline(step.tool)}`,
+      );
+      if (step.action) lines.push(`**Action:** ${escapeMarkdownInline(step.action)}`);
+      if (step.description) lines.push(escapeMarkdownInline(step.description));
+      if (step.forEach) lines.push(`**For each:** ${escapeMarkdownInline(step.forEach)}`);
       if (step.params && Object.keys(step.params).length > 0) {
         lines.push('**Params:**');
         for (const [k, v] of Object.entries(step.params)) {
-          lines.push(`  - \`${k}\`: ${JSON.stringify(v)}`);
+          lines.push(`  - ${escapeMarkdownInline(k)}: ${escapeMarkdownInline(JSON.stringify(v))}`);
         }
       }
       lines.push('');

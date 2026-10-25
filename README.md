@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.4.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.2.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.2-blueviolet.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.4.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.3.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.4-blueviolet.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -23,7 +23,7 @@
 
 ## Overview
 
-A declarative workflow library for LLM agents, backed by local YAML files. Store, list, and retrieve named, versioned multi-step playbooks — each a sequence of MCP server/tool calls — for permanent reuse or one-shot temporary runs. Runs as a stdio process or a local Streamable HTTP server; an in-memory index rebuilds automatically as files change.
+A declarative workflow library for LLM agents, backed by local YAML files. Store, list, and retrieve named, versioned multi-step playbooks — each a sequence of MCP server/tool calls — for permanent reuse or one-shot temporary runs. Edits to the YAML files are picked up automatically.
 
 ### Tools
 
@@ -203,7 +203,7 @@ cp .env.example .env
 |:---------|:------------|:--------|
 | `WORKFLOWS_DIR` | Absolute or relative path to the workflows root directory. | `./workflows-yaml` |
 | `GLOBAL_INSTRUCTIONS_PATH` | Path to the global instructions markdown file. Derives from `WORKFLOWS_DIR` when not set. | `<WORKFLOWS_DIR>/global_instructions.md` |
-| `WATCHER_DEBOUNCE_MS` | Milliseconds to debounce filesystem change events before rebuilding the index. | `500` |
+| `WATCHER_DEBOUNCE_MS` | Integer milliseconds (0–2147483647) to debounce filesystem change events before rebuilding the index. | `500` |
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
 | `MCP_HTTP_PORT` | Port for HTTP server. | `3010` |
 | `MCP_SESSION_MODE` | HTTP sessions: `auto` or `stateful`. `workflow_delete`'s confirmation prompt needs a live session, so HTTP startup with `stateless` fails with a configuration error. Ignored over stdio. | `stateful`, declared in `src/index.ts` |

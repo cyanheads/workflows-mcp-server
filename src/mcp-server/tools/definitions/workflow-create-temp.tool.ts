@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
 import type { ParsedWorkflow } from '@/services/workflow-index/types.js';
 import {
@@ -210,8 +211,8 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
         text: [
           `## Temporary Workflow ${result.status === 'created' ? 'Created' : 'Overwritten'}`,
           `**Status:** ${result.status}`,
-          `**Key:** ${result.key}`,
-          `**File:** ${result.filePath}`,
+          `**Key:** ${escapeMarkdownInline(result.key)}`,
+          `**File:** ${escapeMarkdownInline(result.filePath)}`,
           `**Created:** ${result.created_date}`,
           `**Updated:** ${result.last_updated_date}`,
         ].join('\n'),

@@ -6,6 +6,7 @@
 
 import { inputRequired, tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
 import {
   canonicalVersion,
@@ -230,8 +231,8 @@ export const workflowDelete = tool('workflow_delete', {
         text: [
           `## Workflow Deleted`,
           `**Status:** ${result.status}`,
-          `**Name:** ${result.name}`,
-          `**Version:** ${result.version}`,
+          `**Name:** ${escapeMarkdownInline(result.name)}`,
+          `**Version:** ${escapeMarkdownInline(result.version)}`,
           `**Source:** ${result.source}`,
         ].join('\n'),
       },

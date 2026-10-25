@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
 import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
 
@@ -191,13 +192,18 @@ export const workflowList = tool('workflow_list', {
 
     lines.push('');
     for (const wf of result.workflows) {
-      lines.push(`## ${wf.name} v${wf.version}`);
-      lines.push(`**Author:** ${wf.author}`);
-      if (wf.category) lines.push(`**Category:** ${wf.category}`);
-      if (wf.tags && wf.tags.length > 0) lines.push(`**Tags:** ${wf.tags.join(', ')}`);
-      lines.push(wf.description);
+      // CommonMark headings cannot contain the hard breaks used to preserve multiline values.
+      const titlePrefix = /[\r\n]/.test(wf.name) ? '**Workflow:** ' : '## ';
+      lines.push(
+        `${titlePrefix}${escapeMarkdownInline(wf.name)} v${escapeMarkdownInline(wf.version)}`,
+      );
+      lines.push(`**Author:** ${escapeMarkdownInline(wf.author)}`);
+      if (wf.category) lines.push(`**Category:** ${escapeMarkdownInline(wf.category)}`);
+      if (wf.tags && wf.tags.length > 0)
+        lines.push(`**Tags:** ${wf.tags.map(escapeMarkdownInline).join(', ')}`);
+      lines.push(escapeMarkdownInline(wf.description));
       if (wf.tools && wf.tools.length > 0) {
-        lines.push(`**Tools used:** ${wf.tools.join(', ')}`);
+        lines.push(`**Tools used:** ${wf.tools.map(escapeMarkdownInline).join(', ')}`);
       }
       lines.push('');
     }

@@ -6,6 +6,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import type { AnyToolDefinition } from '@cyanheads/mcp-ts-core';
 import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -106,6 +107,43 @@ describe('workflowList', () => {
   });
 
   // --- happy paths ---
+
+  it('accepts repaired boolean and array representations without changing the result schema', async () => {
+    const result = await runToolContract<AnyToolDefinition>(workflowList, {
+      tags: 'daily',
+      includeTools: 'true',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      totalCount: 1,
+      workflows: [{ name: 'git-wrap-up', tools: ['test-server/test_tool'] }],
+    });
+    expect((result.content[0] as { text: string }).text).toContain('test-server/test_tool');
+  });
+
+  it('treats null optional filters as absent', async () => {
+    const result = await runToolContract<AnyToolDefinition>(workflowList, {
+      tags: null,
+      includeTools: null,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({ totalCount: 3 });
+  });
+
+  it('renders workflow metadata as literal text while structured values remain unchanged', async () => {
+    const entry = svc.index.get('git-wrap-up@1.0.0')!;
+    entry.workflow.author = '*ops* [team](https://example.com)';
+    entry.workflow.description = '<b>Deploy</b> &amp; verify';
+    const result = await runToolContract(workflowList, { tags: ['daily'] });
+    expect(result.structuredContent).toMatchObject({
+      workflows: [
+        { author: '*ops* [team](https://example.com)', description: '<b>Deploy</b> &amp; verify' },
+      ],
+    });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain('**Author:** \\*ops\\* \\[team\\](https://example.com)');
+    expect(text).toContain('\\<b>Deploy\\</b> \\&amp; verify');
+  });
 
   it('returns all permanent workflows when no filters are applied', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
@@ -307,6 +345,26 @@ describe('workflowList', () => {
   });
 
   // --- format ---
+
+  it.each(['\n', '\r', '\r\n'])(
+    'keeps multiline workflow names outside Markdown headings (%j)',
+    (lineBreak) => {
+      const blocks = workflowList.format!({
+        workflows: [
+          {
+            name: `first${lineBreak}second`,
+            version: '1.0.0',
+            author: 'author',
+            description: 'description',
+          },
+        ],
+        totalCount: 1,
+      });
+      const text = (blocks[0] as { text: string }).text;
+      expect(text).toContain('**Workflow:** first\\\nsecond v1.0.0');
+      expect(text).not.toContain('## first');
+    },
+  );
 
   it('formats output with workflow names and authors', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });

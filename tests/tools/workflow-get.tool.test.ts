@@ -165,6 +165,47 @@ describe('workflowGet', () => {
 
   // --- format ---
 
+  it.each(['\n', '\r', '\r\n'])(
+    'keeps multiline workflow and step names outside Markdown headings (%j)',
+    (lineBreak) => {
+      const blocks = workflowGet.format!({
+        workflow: {
+          name: `first${lineBreak}second`,
+          version: '1.0.0',
+          description: 'description',
+          author: 'author',
+          steps: [{ server: 'server', tool: 'tool', name: `step first${lineBreak}step second` }],
+        },
+        globalInstructions: null,
+        source: 'permanent',
+      });
+      const text = (blocks[0] as { text: string }).text;
+      expect(text).toContain('**Workflow:** first\\\nsecond v1.0.0');
+      expect(text).toContain('**Step 1:** step first\\\nstep second');
+      expect(text).not.toContain('# first');
+      expect(text).not.toContain('### Step 1:');
+    },
+  );
+
+  it('preserves parameter punctuation and escapes metadata without altering authored global instructions', () => {
+    const blocks = workflowGet.format!({
+      workflow: {
+        name: '*Deploy*',
+        version: '1.0.0',
+        description: '[do](x)',
+        author: '<ops>',
+        steps: [{ server: 'server', tool: 'tool', params: { '`key`': '*value*' } }],
+      },
+      globalInstructions: '**Always verify.**',
+      source: 'permanent',
+    });
+    const text = (blocks[0] as { text: string }).text;
+    expect(text).toContain('# \\*Deploy\\* v1.0.0');
+    expect(text).toContain('\\[do\\](x)');
+    expect(text).toContain('\\`key\\`: "\\*value\\*"');
+    expect(text).toContain('**Always verify.**');
+  });
+
   it('renders workflow name, version, author, and steps', async () => {
     const ctx = createMockContext({ errors: workflowGet.errors });
     const input = workflowGet.input.parse({ name: 'deploy-app', version: '1.0.0' });

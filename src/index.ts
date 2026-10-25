@@ -32,7 +32,7 @@ await createApp({
    * refused and no such client could ever delete. `require` makes HTTP startup with
    * MCP_SESSION_MODE=stateless fail with a ConfigurationError instead. Stdio is unaffected.
    */
-  sessionMode: { default: 'stateful', require: 'stateful' },
+  sessionMode: { require: 'stateful' },
 
   setup(core) {
     const cfg = getServerConfig();
