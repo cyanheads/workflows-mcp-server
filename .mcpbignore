@@ -12,6 +12,8 @@
 /.vscode/
 /logs/
 /.cache/
+/workflows-yaml/_index.json
+/workflows-yaml/temp/
 /Dockerfile
 /bun.lock
 /bunfig.toml
