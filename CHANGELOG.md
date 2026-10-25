@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.4.2](changelog/0.4.x/0.4.2.md) — 2026-10-25
+
+Workflow metadata renders as literal text, watcher delays reject invalid timer values, and the framework upgrade adds tool-argument repairs.
+
 ## [0.4.1](changelog/0.4.x/0.4.1.md) — 2026-10-07 · 🛡️ Security
 
 Delete confirmations are bound to the caller who was asked, and the mcp-ts-core ^0.13.6 → ^0.13.13 upgrade adds a request ID to every error result and keeps stack traces and request context out of error data.
