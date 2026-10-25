@@ -3,6 +3,8 @@
  * @module tests/config/server-config.test
  */
 
+// Load the framework before test timers start; resetModules still isolates the lazy config cache.
+import '@cyanheads/mcp-ts-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 beforeEach(() => {
@@ -45,5 +47,11 @@ describe('server environment configuration', () => {
     vi.stubEnv('WATCHER_DEBOUNCE_MS', 'invalid');
     const { getServerConfig } = await import('@/config/server-config.js');
     expect(() => getServerConfig()).toThrow();
+  });
+
+  it.each(['-1', '1.5', '2147483648'])('rejects an invalid debounce timer (%s)', async (value) => {
+    vi.stubEnv('WATCHER_DEBOUNCE_MS', value);
+    const { getServerConfig } = await import('@/config/server-config.js');
+    expect(() => getServerConfig()).toThrow('WATCHER_DEBOUNCE_MS');
   });
 });

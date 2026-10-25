@@ -19,6 +19,9 @@ const ServerConfigSchema = z.object({
     ),
   watcherDebounceMs: z.coerce
     .number()
+    .int()
+    .min(0)
+    .max(2_147_483_647)
     .default(500)
     .describe('Milliseconds to debounce filesystem change events before rebuilding the index'),
 });
