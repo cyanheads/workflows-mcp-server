@@ -628,6 +628,11 @@ describe('workflowDelete', () => {
   // --- a key another file still declares (GH #32) ---
 
   it('returns a notice naming the file now indexed under the key when another copy declares it (GH #32)', async () => {
+    /**
+     * Explicit writes rebuild below; stop the watcher so its pending rebuild cannot change
+     * which duplicate the fixture selected before the confirmation round.
+     */
+    svc.shutdown();
     const copyDir = path.join(dir, 'categories', 'archive');
     await fs.mkdir(copyDir, { recursive: true });
     await fs.writeFile(
