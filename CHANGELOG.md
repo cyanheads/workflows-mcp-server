@@ -4,7 +4,7 @@ All notable changes to this project. Each entry links to its full per-version fi
 
 ## [0.5.0](changelog/0.5.x/0.5.0.md) — 2026-10-28
 
-Publishes the workflows-guide skill over MCP, shows caller and workflow text literally in tool notices, and moves to mcp-ts-core 0.13.18, which stops the HTTP transport retaining memory per request under Bun.
+Publishes the workflows-guide skill over MCP, shows caller and workflow text literally in tool notices, and moves to mcp-ts-core 0.13.18, taking the 0.13.17 fix that stops the HTTP transport retaining memory per request under Bun.
 
 ## [0.4.2](changelog/0.4.x/0.4.2.md) — 2026-10-25
 
