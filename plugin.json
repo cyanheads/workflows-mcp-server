@@ -1,0 +1,29 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "workflows-mcp-server",
+  "version": "0.4.2",
+  "description": "Store, query, and create YAML workflow playbooks for LLM agents via MCP. STDIO or Streamable HTTP.",
+  "author": {
+    "name": "Casey Hand",
+    "email": "casey@caseyjhand.com",
+    "url": "https://caseyjhand.com"
+  },
+  "homepage": "https://github.com/cyanheads/workflows-mcp-server#readme",
+  "repository": "https://github.com/cyanheads/workflows-mcp-server",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai",
+    "llm",
+    "bun",
+    "stdio",
+    "streamable-http",
+    "workflows",
+    "yaml",
+    "playbook",
+    "automation",
+    "agent-tools"
+  ]
+}
