@@ -19,6 +19,7 @@ await createApp({
   tools: allToolDefinitions,
   resources: [],
   prompts: [],
+  skills: 'skills',
   instructions:
     'A declarative workflow library. Use workflow_list to discover available workflows, ' +
     'workflow_get to retrieve a full workflow definition with global instructions, ' +
