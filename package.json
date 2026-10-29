@@ -18,7 +18,8 @@
     "CLAUDE.md",
     "AGENTS.md",
     "Dockerfile",
-    "server.json"
+    "server.json",
+    "skills/"
   ],
   "scripts": {
     "build": "bun run scripts/build.ts",
@@ -40,6 +41,7 @@
     "publish-mcp": "mcp-publisher login github -token \"$(security find-generic-password -a \"$USER\" -s mcp-publisher-github-pat -w)\" && mcp-publisher publish",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "start": "node dist/index.js",
     "start:stdio": "MCP_TRANSPORT_TYPE=stdio bun ./dist/index.js",
     "start:http": "MCP_TRANSPORT_TYPE=http bun ./dist/index.js"
   },
@@ -87,7 +89,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@cyanheads/mcp-ts-core": "^0.13.16",
+    "@cyanheads/mcp-ts-core": "^0.13.18",
     "pino-pretty": "^13.2.0",
     "semver": "^7.8.5",
     "yaml": "^2.9.1",
