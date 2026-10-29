@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.4.2-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.3.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.4-blueviolet.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.4.2-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/workflows-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.4.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/workflows-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/workflows-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.4.4-blueviolet.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -30,7 +30,7 @@ A declarative workflow library for LLM agents, backed by local YAML files. Store
 | Tool | Description |
 |:-----|:------------|
 | `workflow_list` | List all permanent workflows in the index, with optional keyword, category, and tag filters. |
-| `workflow_get` | Retrieve a complete workflow definition by name, with global instructions prepended. |
+| `workflow_get` | Retrieve a complete workflow definition by name, with the library's global instructions included. |
 | `workflow_create` | Write a new permanent workflow YAML to the library. |
 | `workflow_create_temp` | Write a temporary workflow draft, indexed but excluded from list results, kept until deleted. |
 | `workflow_delete` | Remove a permanent workflow or a temporary draft by name and optional version, after the user confirms the resolved target. |
@@ -161,7 +161,7 @@ MCP_TRANSPORT_TYPE=http MCP_HTTP_PORT=3010 bun run start:http
 
 ### Seed workflows
 
-The repository ships a `workflows-yaml/` directory with example workflows organized under `categories/`. These are ready to use as a starting point. The `workflows-yaml/global_instructions.md` file contains instructions the server prepends to every `workflow_get` response — edit it to set global guidance for your agent.
+The repository ships a `workflows-yaml/` directory with example workflows organized under `categories/`. These are ready to use as a starting point. The `workflows-yaml/global_instructions.md` file contains instructions the server includes in every `workflow_get` response (the `globalInstructions` field) — edit it to set global guidance for your agent.
 
 ### Prerequisites
 
