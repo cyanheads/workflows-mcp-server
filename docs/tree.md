@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2026-10-07 11:25:12
+Generated on: 2026-10-29 02:30:19
 
 ```text
 workflows-mcp-server/
@@ -28,6 +28,7 @@ workflows-mcp-server/
 │   ├── 0.2.x/
 │   ├── 0.3.x/
 │   ├── 0.4.x/
+│   ├── 0.5.x/
 │   └── template.md
 ├── docs/
 │   ├── design.md
@@ -40,6 +41,8 @@ workflows-mcp-server/
 │   ├── add-resource/
 │   │   └── SKILL.md
 │   ├── add-service/
+│   │   └── SKILL.md
+│   ├── add-skill/
 │   │   └── SKILL.md
 │   ├── add-test/
 │   │   └── SKILL.md
@@ -137,6 +140,9 @@ workflows-mcp-server/
 │   ├── prune-musl-packages.ts
 │   ├── release-github.ts
 │   └── tree.ts
+├── skills/
+│   └── workflows-guide/
+│       └── SKILL.md
 ├── src/
 │   ├── config/
 │   │   └── server-config.ts
@@ -146,13 +152,14 @@ workflows-mcp-server/
 │   │   ├── resources/
 │   │   │   └── definitions/
 │   │   └── tools/
-│   │       └── definitions/
-│   │           ├── index.ts
-│   │           ├── workflow-create-temp.tool.ts
-│   │           ├── workflow-create.tool.ts
-│   │           ├── workflow-delete.tool.ts
-│   │           ├── workflow-get.tool.ts
-│   │           └── workflow-list.tool.ts
+│   │       ├── definitions/
+│   │       │   ├── index.ts
+│   │       │   ├── workflow-create-temp.tool.ts
+│   │       │   ├── workflow-create.tool.ts
+│   │       │   ├── workflow-delete.tool.ts
+│   │       │   ├── workflow-get.tool.ts
+│   │       │   └── workflow-list.tool.ts
+│   │       └── escaped-notice-trailer.ts
 │   ├── services/
 │   │   └── workflow-index/
 │   │       ├── types.ts
@@ -163,6 +170,8 @@ workflows-mcp-server/
 │   │   └── server-config.test.ts
 │   ├── prompts/
 │   ├── resources/
+│   ├── scripts/
+│   │   └── bundle-agent-docs.test.ts
 │   ├── services/
 │   │   ├── workflow-index-service.test.ts
 │   │   └── workflow-index-service.write-retry.test.ts
@@ -225,7 +234,9 @@ workflows-mcp-server/
 ├── Dockerfile
 ├── LICENSE
 ├── manifest.json
+├── mcp.json
 ├── package.json
+├── plugin.json
 ├── README.md
 ├── server.json
 ├── tsconfig.build.json
