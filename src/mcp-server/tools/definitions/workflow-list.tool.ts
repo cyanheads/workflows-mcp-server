@@ -7,6 +7,7 @@ import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
+import { escapedNoticeTrailer } from '@/mcp-server/tools/escaped-notice-trailer.js';
 import { getWorkflowIndexService } from '@/services/workflow-index/workflow-index-service.js';
 
 export const workflowList = tool('workflow_list', {
@@ -79,6 +80,9 @@ export const workflowList = tool('workflow_list', {
         'Guidance when no workflows match — echoes the applied filters and suggests how to broaden.',
       ),
   },
+
+  // The notice echoes the caller's filter text.
+  enrichmentTrailer: { notice: escapedNoticeTrailer },
 
   errors: [
     {

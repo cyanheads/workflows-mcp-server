@@ -397,6 +397,22 @@ describe('workflowList', () => {
     expect(enrichment.notice).toContain('nonexistent-tag');
   });
 
+  it('escapes the echoed filter text in the content[] notice while structuredContent keeps it raw', async () => {
+    const result = await runToolContract(workflowList, {
+      query: '*nomatch* [x](y)',
+      tags: ['`tick`', 'line\nbreak'],
+    });
+    const notice = (result.structuredContent as { notice?: string }).notice;
+    expect(notice).toContain('query "*nomatch* [x](y)"');
+    expect(notice).toContain('tags ["`tick`", "line\nbreak"]');
+
+    const text = result.content.map((block) => (block as { text: string }).text).join('\n');
+    expect(text).toContain('> No permanent workflows matched query "\\*nomatch\\* \\[x\\](y)"');
+    expect(text).toContain('tags \\["\\`tick\\`", "line\\');
+    // Every line of the notice stays inside the block quote.
+    expect(text).toMatch(/^> break"\\\]\. Remove or broaden a filter/m);
+  });
+
   it('does not emit an empty-result notice when workflows match', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const result = await workflowList.handler(workflowList.input.parse({}), ctx);

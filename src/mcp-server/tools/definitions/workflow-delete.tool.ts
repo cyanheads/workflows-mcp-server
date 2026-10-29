@@ -8,6 +8,7 @@ import { inputRequired, tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
+import { escapedNoticeTrailer } from '@/mcp-server/tools/escaped-notice-trailer.js';
 import {
   canonicalVersion,
   type DeleteCaller,
@@ -77,13 +78,16 @@ export const workflowDelete = tool('workflow_delete', {
       ),
   },
 
+  // The notice embeds the workflow's name, version, and file path.
+  enrichmentTrailer: { notice: escapedNoticeTrailer },
+
   errors: [
     {
       reason: 'not_found',
       code: JsonRpcErrorCode.NotFound,
       when: 'No permanent workflow or temporary draft matches the given name, or the given name and version.',
       recovery:
-        'Use workflow_list to see permanent workflow names and versions (temporary drafts are not listed; use the key workflow_create_temp returned), then retry; omit version to target the latest.',
+        'Use workflow_list to see permanent workflow names and versions (temporary drafts are not listed; use the key workflow_create_temp returned), then retry with the exact name and the version to delete.',
     },
     {
       reason: 'cancelled',
