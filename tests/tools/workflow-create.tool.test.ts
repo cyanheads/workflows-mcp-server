@@ -117,6 +117,20 @@ describe('workflowCreate', () => {
     expect(content).toContain('prod');
   });
 
+  it('writes trimmed tags without blank entries', async () => {
+    const input = workflowCreate.input.parse({
+      ...VALID_INPUT,
+      tags: [' Prod ', '  ', 'infra', 'Prod', ' false ', '123 '],
+    });
+    const result = await workflowCreate.handler(
+      input,
+      createMockContext({ errors: workflowCreate.errors }),
+    );
+    expect(parseYaml(await fs.readFile(result.filePath, 'utf-8'))).toMatchObject({
+      tags: ['Prod', 'infra', 'Prod', 'false', '123'],
+    });
+  });
+
   // --- error paths ---
 
   it('throws already_exists when name@version already exists in the permanent index', async () => {

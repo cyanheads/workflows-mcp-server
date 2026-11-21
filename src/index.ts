@@ -35,7 +35,7 @@ await createApp({
    */
   sessionMode: { require: 'stateful' },
 
-  setup(core) {
+  async setup() {
     const cfg = getServerConfig();
 
     // Resolve the workflows directory relative to CWD
@@ -47,13 +47,7 @@ await createApp({
       ? path.resolve(process.cwd(), cfg.globalInstructionsPath)
       : path.join(workflowsDir, 'global_instructions.md');
 
-    initWorkflowIndexService(
-      core.config,
-      core.storage,
-      workflowsDir,
-      globalInstructionsPath,
-      cfg.watcherDebounceMs,
-    );
+    await initWorkflowIndexService(workflowsDir, globalInstructionsPath, cfg.watcherDebounceMs);
   },
 
   /** Releases the index service's fs.watch handle and its pending debounce timer. */

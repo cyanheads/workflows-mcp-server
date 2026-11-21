@@ -95,6 +95,33 @@ describe('workflowGet', () => {
 
   // --- happy paths ---
 
+  it('returns trimmed legacy tags in structured and formatted output and keeps the file intact', async () => {
+    const dirPath = path.join(dir, 'categories', 'deployment');
+    const filePath = path.join(dirPath, 'legacy.yaml');
+    const yaml = PERMANENT_WF_YAML.replace('name: deploy-app', 'name: legacy').replace(
+      '  - deploy\n  - production',
+      '  - " Deploy "\n  - ""\n  - " production "\n  - "Deploy "',
+    );
+    await fs.writeFile(filePath, yaml);
+    svc.shutdown();
+    svc = new WorkflowIndexService(dir, path.join(dir, 'global_instructions.md'), 10);
+    await svc.init();
+    vi.mocked(getWorkflowIndexService).mockReturnValue(svc);
+
+    const result = await runToolContract(workflowGet, { name: 'legacy' });
+    expect(result.structuredContent).toMatchObject({
+      workflow: { tags: ['Deploy', 'production', 'Deploy'] },
+    });
+    expect(result.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: expect.stringContaining('**Tags:** Deploy, production, Deploy'),
+        }),
+      ]),
+    );
+    expect(await fs.readFile(filePath, 'utf-8')).toBe(yaml);
+  });
+
   it('returns the latest version when version is omitted', async () => {
     const ctx = createMockContext({ errors: workflowGet.errors });
     const input = workflowGet.input.parse({ name: 'deploy-app' });

@@ -141,6 +141,24 @@ describe('workflowCreateTemp', () => {
     expect(content).toContain('research');
   });
 
+  it('writes trimmed tags on draft creation and drops blank-only tags on overwrite', async () => {
+    const ctx = createMockContext({ errors: workflowCreateTemp.errors });
+    const first = await workflowCreateTemp.handler(
+      workflowCreateTemp.input.parse({ ...VALID_INPUT, tags: [' Draft ', '\t'] }),
+      ctx,
+    );
+    expect(parseYaml(await fs.readFile(first.filePath, 'utf-8'))).toMatchObject({
+      tags: ['Draft'],
+    });
+
+    const second = await workflowCreateTemp.handler(
+      workflowCreateTemp.input.parse({ ...VALID_INPUT, tags: [' '] }),
+      ctx,
+    );
+    expect(second.status).toBe('overwritten');
+    expect(parseYaml(await fs.readFile(second.filePath, 'utf-8'))).toMatchObject({ tags: [] });
+  });
+
   // --- error paths ---
 
   it('throws invalid_input for a name that slugifies to empty string', async () => {

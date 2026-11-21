@@ -82,7 +82,12 @@ export const workflowCreate = tool('workflow_create', {
       .describe(
         'Category name (e.g. "Git Operations") used to group the workflow. Must not be blank or whitespace-only.',
       ),
-    tags: z.array(z.string()).optional().describe('Free-form tags for filtering.'),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Free-form tags for filtering. Surrounding whitespace is trimmed and blank entries are dropped.',
+      ),
     steps: z
       .array(StepInputSchema)
       .min(1)

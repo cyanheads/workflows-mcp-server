@@ -76,7 +76,10 @@ export const workflowCreateTemp = tool('workflow_create_temp', {
       .string()
       .min(1)
       .describe('Author name or team. Must not be blank or whitespace-only.'),
-    tags: z.array(z.string()).optional().describe('Free-form tags.'),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe('Free-form tags. Surrounding whitespace is trimmed and blank entries are dropped.'),
     steps: z
       .array(StepInputSchema)
       .min(1)

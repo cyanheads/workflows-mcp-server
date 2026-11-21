@@ -8,8 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AppConfig } from '@cyanheads/mcp-ts-core/config';
-import type { StorageService } from '@cyanheads/mcp-ts-core/storage';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { logger } from '@cyanheads/mcp-ts-core/utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -667,6 +666,13 @@ describe('WorkflowIndexService', () => {
   });
 
   // --- writePermanent ---
+
+  it('preserves an empty tag array on disk and in the index', async () => {
+    await svc.init();
+    const filePath = await svc.writePermanent(permanentWorkflow({ tags: [] }));
+    expect(parseYaml(await fs.readFile(filePath, 'utf-8'))).toMatchObject({ tags: [] });
+    expect(svc.index.get('fixture-wf@1.0.0')?.workflow.tags).toEqual([]);
+  });
 
   it('writes a permanent workflow file and adds it to the index', async () => {
     await svc.init();
@@ -1849,8 +1855,6 @@ describe('WorkflowIndexService', () => {
   });
 
   it('a shutdown during init leaves no watcher behind', async () => {
-    // initWorkflowIndexService() starts init() without awaiting it, so teardown can land while the
-    // first index build is still running. The watcher must not open after that point.
     const initializing = svc.init();
     svc.shutdown();
     await initializing;
@@ -1877,22 +1881,30 @@ describe('initWorkflowIndexService / shutdownWorkflowIndexService', () => {
   });
 
   it('tears down the live service and clears the accessor', async () => {
-    initWorkflowIndexService(
-      {} as AppConfig,
-      {} as StorageService,
-      dir,
-      path.join(dir, 'global_instructions.md'),
-      10,
-    );
-    await waitFor(() => getWorkflowIndexService().ready);
+    await initWorkflowIndexService(dir, path.join(dir, 'global_instructions.md'), 10);
 
     const live = getWorkflowIndexService();
+    expect(live.ready).toBe(true);
     const internals = live as unknown as ServiceInternals;
     expect(internals._watcherController?.signal.aborted).toBe(false);
 
     shutdownWorkflowIndexService();
 
     expect(internals._watcherController?.signal.aborted).toBe(true);
+    expect(() => getWorkflowIndexService()).toThrow(/not initialized/);
+  });
+
+  it('reports a root creation error and clears the failed service', async () => {
+    const file = path.join(dir, 'blocker');
+    await fs.writeFile(file, '');
+    const root = path.join(file, 'workflows');
+    await expect(
+      initWorkflowIndexService(root, path.join(root, 'global_instructions.md'), 10),
+    ).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ConfigurationError,
+      message: expect.stringContaining(root),
+      cause: { code: 'ENOTDIR' },
+    });
     expect(() => getWorkflowIndexService()).toThrow(/not initialized/);
   });
 

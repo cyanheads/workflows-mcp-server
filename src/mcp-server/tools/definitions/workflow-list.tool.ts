@@ -36,7 +36,7 @@ export const workflowList = tool('workflow_list', {
       .array(z.string())
       .optional()
       .describe(
-        'Filter to workflows that have ALL of these tags (AND match, case-insensitive, each tag trimmed of leading and trailing whitespace). Omit to skip tag filtering.',
+        'Filter to workflows that have all of these tags. Matching is case-insensitive and trims surrounding whitespace. Any blank entry matches no workflows. Omit or pass an empty array to skip tag filtering.',
       ),
     includeTools: z
       .boolean()

@@ -39,7 +39,7 @@ A declarative workflow library for LLM agents, backed by local YAML files. Store
 
 ### `workflow_list` <sub>tool</sub>
 
-- Optional `query` (name and description), `category` (substring), and `tags` (all must match) filters, case-insensitive; temporary drafts are never listed
+- Optional `query` (name and description), `category` (substring), and `tags` (all must match) filters. Filters ignore case and surrounding whitespace. A blank tag filter entry matches no workflows. Temporary drafts are excluded.
 - Sorted by name, then highest version first; an empty result carries a `notice` echoing the applied filters
 - `includeTools: true` adds each workflow's unique `server/tool` pairs
 
@@ -50,12 +50,14 @@ A declarative workflow library for LLM agents, backed by local YAML files. Store
 - `name` plus an optional semver `version`; omit `version` for the highest available, drafts included
 - Returns the full workflow, its `source` (`permanent` or `temp`), and `globalInstructions` from `global_instructions.md` (`null` when absent); fails with `not_found` or `version_not_found`
 - Template placeholders such as `{{input.foo}}` come back verbatim — the server never interpolates them
+- Tags from existing YAML are trimmed and blank entries are dropped when the server loads the files. The files stay unchanged.
 
 ---
 
 ### `workflow_create` <sub>tool</sub>
 
 - `name`, semver `version`, `description`, `author`, `category`, and `steps` (plus optional `tags`); stored as one file per `name@version` under `categories/<category>/`, with created and updated dates stamped
+- Both create tools trim surrounding whitespace from tags and drop blank entries before saving.
 - Returns the `key` (`name@version`) and `filePath`; fails with `already_exists` when a permanent workflow or a draft holds the key, `invalid_input`, or `write_failed`
 
 ---
@@ -165,7 +167,7 @@ The repository ships a `workflows-yaml/` directory with example workflows organi
 
 ### Prerequisites
 
-- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+).
+- [Bun v1.4.4](https://bun.sh/) or higher (or Node.js v24+).
 - A local directory containing YAML workflow files (or use the bundled `workflows-yaml/` seed).
 
 ### Installation
@@ -201,7 +203,7 @@ cp .env.example .env
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
-| `WORKFLOWS_DIR` | Absolute or relative path to the workflows root directory. | `./workflows-yaml` |
+| `WORKFLOWS_DIR` | Absolute or relative path to the workflows root directory. Startup creates it if missing and fails if creation fails. | `./workflows-yaml` |
 | `GLOBAL_INSTRUCTIONS_PATH` | Path to the global instructions markdown file. Derives from `WORKFLOWS_DIR` when not set. | `<WORKFLOWS_DIR>/global_instructions.md` |
 | `WATCHER_DEBOUNCE_MS` | Integer milliseconds (0–2147483647) to debounce filesystem change events before rebuilding the index. | `500` |
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
@@ -253,6 +255,8 @@ docker run --rm \
 ```
 
 The Dockerfile defaults to HTTP transport, stateful session mode (required — see `MCP_SESSION_MODE` above), and logs to `/var/log/workflows-mcp-server`. OpenTelemetry peer dependencies are installed by default — build with `--build-arg OTEL_ENABLED=false` to omit them.
+
+The image's default workflows directory is `/usr/src/app/workflows-yaml`. For a bind mount, point `WORKFLOWS_DIR` at the container-side mount path and grant the container's `bun` user read and write access to the mounted directory and files.
 
 ---
 

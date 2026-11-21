@@ -147,8 +147,9 @@ COPY --from=build /usr/src/app/skills ./skills
 # The 'oven/bun' image already provides a non-root user named 'bun'.
 # We will use this existing user for enhanced security.
 
-# Create and set permissions for the log directory, assigning ownership to the 'bun' user.
-RUN mkdir -p /var/log/workflows-mcp-server && chown -R bun:bun /var/log/workflows-mcp-server
+# Prepare the log directory and the default workflows root for the 'bun' user.
+RUN mkdir -p /var/log/workflows-mcp-server workflows-yaml && \
+    chown bun:bun /var/log/workflows-mcp-server workflows-yaml
 
 # Switch to the non-root user
 USER bun

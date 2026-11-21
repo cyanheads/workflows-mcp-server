@@ -49,6 +49,8 @@ Filters such as `| slice: 0, 3`, `| slugify`, or `{{now | date: 'YYYY-MM-DD'}}` 
 
 **Run a saved workflow.** Call `workflow_list` with `query` (a substring of the name or description), `category` (a substring), or `tags` (each must equal a whole tag, ignoring case: `pub` does not match `pubmed`). Pick the row, call `workflow_get` with its name and version, apply `globalInstructions` when it is not null, then run the steps in order through your tools, carrying each output forward.
 
+The server trims surrounding whitespace and drops blank stored tags when writing or loading workflows. Keep tag filters nonblank. A blank entry matches no workflows.
+
 **Save a procedure.** Write one step per tool call: `server` is the server's name as you see it, `tool` its exact tool name, literal `params` for values fixed on every run, and `{{input.<name>}}` for values that change. Give a step a `name` when a later step reads its output. Reuse a category spelling `workflow_list` already shows. `already_exists` means that name and version are taken; a revision goes in at a higher version.
 
 **Draft, then promote or discard.** `workflow_create_temp` writes a draft with no category. Writing the same name and version again overwrites it (`status: "overwritten"`). Keep the returned `key`: nothing lists the draft and nothing expires it. A draft and a permanent workflow can never share a name and version, in either direction, so promote one of two ways:

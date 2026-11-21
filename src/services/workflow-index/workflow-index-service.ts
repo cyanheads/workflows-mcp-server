@@ -9,8 +9,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { z } from '@cyanheads/mcp-ts-core';
-import type { AppConfig } from '@cyanheads/mcp-ts-core/config';
-import type { StorageService } from '@cyanheads/mcp-ts-core/storage';
+import { configurationError } from '@cyanheads/mcp-ts-core/errors';
 import { logger } from '@cyanheads/mcp-ts-core/utils';
 import * as semver from 'semver';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -36,6 +35,18 @@ const StepSchema = z.object({
   forEach: z.string().optional(),
 });
 
+function normalizeTags(tags: string[]): string[] {
+  return tags.map((tag) => tag.trim()).filter((tag) => tag !== '');
+}
+
+function normalizeWorkflowTags<W extends ParsedWorkflow>(
+  workflow: W,
+): Omit<W, 'tags'> & Pick<ParsedWorkflow, 'tags'> {
+  return workflow.tags === undefined
+    ? workflow
+    : { ...workflow, tags: normalizeTags(workflow.tags) };
+}
+
 const WorkflowSchema = z.object({
   name: requiredText(),
   // Full semver validation, not a start-anchored regex — a suffix like "1.0.0junk" must
@@ -57,7 +68,7 @@ const WorkflowSchema = z.object({
     .array(z.string())
     .nullable()
     .optional()
-    .transform((v) => v ?? undefined),
+    .transform((tags) => (tags == null ? undefined : normalizeTags(tags))),
   created_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}/)
@@ -263,7 +274,7 @@ export interface TempWriteResult<W extends ParsedWorkflow = ParsedWorkflow> {
   filePath: string;
   status: 'created' | 'overwritten';
   /** The workflow as written — on an overwrite, carrying the replaced draft's `created_date`. */
-  workflow: W;
+  workflow: Omit<W, 'tags'> & Pick<ParsedWorkflow, 'tags'>;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,10 +287,6 @@ function logInfo(msg: string): void {
 
 function logWarn(msg: string): void {
   logger.warning(msg);
-}
-
-function logError(msg: string, err: unknown): void {
-  logger.error(msg, err instanceof Error ? err : new Error(String(err)));
 }
 
 // ---------------------------------------------------------------------------
@@ -325,15 +332,17 @@ export class WorkflowIndexService {
 
   /** Initialize: build initial index and start filesystem watcher. */
   async init(): Promise<void> {
-    // Ensure the workflow root exists before the first rebuild and watch. On a fresh install the
-    // configured WORKFLOWS_DIR may not exist yet; without this, writeSnapshot() ENOENTs on
-    // <root>/_index.json and fs.watch() throws ENOENT so the watcher exits — leaving the server
-    // "ready" but silently un-watched. Creating it up front mirrors the lazy mkdir in
-    // writePermanent()/writeTemp().
-    await fs.mkdir(this.workflowsDir, { recursive: true });
+    try {
+      await fs.mkdir(this.workflowsDir, { recursive: true });
+    } catch (cause) {
+      throw configurationError(
+        `Cannot create the WORKFLOWS_DIR directory "${this.workflowsDir}". Set WORKFLOWS_DIR to an existing workflows directory or a path its parent allows the server to create.`,
+        undefined,
+        { cause },
+      );
+    }
     await this.exclusive(() => this.rebuild());
-    // initWorkflowIndexService() does not await this, so a shutdown can land mid-build. Starting
-    // the watcher afterwards would open a ref'd fs.watch nothing aborts.
+    // A shutdown during the initial rebuild must leave no open watcher.
     if (this._shutdown) return;
     this.startWatcher();
   }
@@ -487,7 +496,7 @@ export class WorkflowIndexService {
 
       const categoryDir = path.join(this.workflowsDir, 'categories', categorySlug);
       const filePath = path.join(categoryDir, workflowFileName(workflow.name, workflow.version));
-      const content = stringifyYaml(workflow, { lineWidth: 0 });
+      const content = stringifyYaml(normalizeWorkflowTags(workflow), { lineWidth: 0 });
       // `wx` fails atomically if the file already exists.
       const writeExclusive = () =>
         fs.writeFile(filePath, content, { encoding: 'utf-8', flag: 'wx' });
@@ -525,8 +534,9 @@ export class WorkflowIndexService {
    * already there overwrites it, keeping the replaced draft's `created_date`, and reports
    * `overwritten`.
    */
-  async writeTemp<W extends ParsedWorkflow>(workflow: W): Promise<TempWriteResult<W>> {
+  async writeTemp<W extends ParsedWorkflow>(draft: W): Promise<TempWriteResult<W>> {
     return await this.exclusive(async () => {
+      const workflow = normalizeWorkflowTags(draft);
       const key = `${workflow.name}@${workflow.version}`;
       const existing = this._index.get(key);
       if (existing && !existing.isTemp) {
@@ -853,17 +863,21 @@ export class WorkflowIndexService {
 
 let _service: WorkflowIndexService | undefined;
 
-export function initWorkflowIndexService(
-  _config: AppConfig,
-  _storage: StorageService,
+/** Create the singleton and await the initial index build before starting transport. */
+export async function initWorkflowIndexService(
   workflowsDir: string,
   globalInstructionsPath: string,
   watcherDebounceMs: number,
-): void {
-  _service = new WorkflowIndexService(workflowsDir, globalInstructionsPath, watcherDebounceMs);
-  _service.init().catch((err) => {
-    logError('WorkflowIndexService init failed', err);
-  });
+): Promise<void> {
+  const service = new WorkflowIndexService(workflowsDir, globalInstructionsPath, watcherDebounceMs);
+  _service = service;
+  try {
+    await service.init();
+  } catch (error) {
+    service.shutdown();
+    if (_service === service) _service = undefined;
+    throw error;
+  }
 }
 
 /**

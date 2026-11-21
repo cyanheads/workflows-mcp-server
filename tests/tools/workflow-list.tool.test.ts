@@ -464,6 +464,27 @@ describe('workflowList', () => {
     expect(blankOnly.totalCount).toBe(0);
   });
 
+  it.each([
+    { tags: [' legacy '], totalCount: 1, text: '**Tags:** Legacy' },
+    { tags: ['git', ' '], totalCount: 0, text: '**Total workflows:** 0' },
+    { tags: [' '], totalCount: 0, text: '**Total workflows:** 0' },
+  ])('matches legacy stored tags with filter $tags', async ({ tags, totalCount, text }) => {
+    await writeWorkflow(dir, 'git', 'legacy', '1.0.0', 'Git', ['" Legacy "']);
+    await writeWorkflow(dir, 'git', 'blank', '1.0.0', 'Git', ['git', '""']);
+    svc.shutdown();
+    svc = new WorkflowIndexService(dir, path.join(dir, 'global_instructions.md'), 10);
+    await reindex(svc);
+
+    const result = await runToolContract(workflowList, { tags });
+    expect(result.structuredContent).toMatchObject({
+      totalCount,
+      workflows: totalCount ? [{ name: 'legacy', tags: ['Legacy'] }] : [],
+    });
+    expect(result.content).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining(text) })]),
+    );
+  });
+
   it('echoes the trimmed filter values in the empty-result notice (GH #15)', async () => {
     const ctx = createMockContext({ errors: workflowList.errors });
     const result = await workflowList.handler(
