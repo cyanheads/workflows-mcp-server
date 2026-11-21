@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.5.1](changelog/0.5.x/0.5.1.md) — 2026-11-21
+
+Fail early when the workflow directory cannot be created and normalize whitespace-padded tags.
+
 ## [0.5.0](changelog/0.5.x/0.5.0.md) — 2026-10-28
 
 Publishes the workflows-guide skill over MCP, shows caller and workflow text literally in tool notices, and moves to mcp-ts-core 0.13.18, taking the 0.13.17 fix that stops the HTTP transport retaining memory per request under Bun.

@@ -1,6 +1,6 @@
 # workflows-mcp-server - Directory Structure
 
-Generated on: 2026-10-29 02:30:19
+Generated on: 2026-11-21 16:52:47
 
 ```text
 workflows-mcp-server/
@@ -175,12 +175,13 @@ workflows-mcp-server/
 │   ├── services/
 │   │   ├── workflow-index-service.test.ts
 │   │   └── workflow-index-service.write-retry.test.ts
-│   └── tools/
-│       ├── workflow-create-temp.tool.test.ts
-│       ├── workflow-create.tool.test.ts
-│       ├── workflow-delete.tool.test.ts
-│       ├── workflow-get.tool.test.ts
-│       └── workflow-list.tool.test.ts
+│   ├── tools/
+│   │   ├── workflow-create-temp.tool.test.ts
+│   │   ├── workflow-create.tool.test.ts
+│   │   ├── workflow-delete.tool.test.ts
+│   │   ├── workflow-get.tool.test.ts
+│   │   └── workflow-list.tool.test.ts
+│   └── startup.test.ts
 ├── workflows-yaml/
 │   ├── categories/
 │   │   ├── git_operations/
