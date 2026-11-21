@@ -4,7 +4,7 @@ description: Gates and conventions for the workflow_* playbook library. Use befo
 license: Apache-2.0
 metadata:
   author: cyanheads
-  version: "1.0"
+  version: "1.1"
 ---
 
 ## Scope

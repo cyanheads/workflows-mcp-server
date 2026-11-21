@@ -128,7 +128,7 @@ Two more `createApp()` options shape how the server runs rather than how it pres
 ```ts
 await createApp({
   sessionMode: { require: 'stateful' },
-  setup(core) { initWorkflowIndexService(/* … */); },
+  async setup() { await initWorkflowIndexService(/* … */); },
   teardown() { shutdownWorkflowIndexService(); },
 });
 ```
