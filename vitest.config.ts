@@ -17,6 +17,8 @@ export default mergeConfig(
   defineConfig({
     resolve: { alias },
     test: {
+      // Vitest's fork watchdog requires child.channel.unref(), which Bun lacks.
+      pool: process.versions.bun ? 'threads' : 'forks',
       projects: [
         {
           extends: true,
